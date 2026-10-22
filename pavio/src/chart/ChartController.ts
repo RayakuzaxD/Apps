@@ -16,8 +16,9 @@ import {
 import { pricePrecision } from '../domain/candles'
 import { formatPrice, formatVolume } from '../domain/format'
 import type { IndicatorResult } from '../domain/indicators/registry'
-import { isIntraday } from '../domain/intervals'
+import { getInterval, isIntraday } from '../domain/intervals'
 import type { Candle, IntervalId } from '../domain/types'
+import { DrawingController, type DrawingCallbacks } from '../drawings/DrawingController'
 import { IndicatorView } from './IndicatorView'
 import type { ChartTheme } from './theme'
 import { formatCrosshairTime, formatTickMark, localOffsetSeconds } from './time'
@@ -48,6 +49,9 @@ export class ChartController {
   private candles: readonly Candle[] = []
   private timeOffset = 0
   private intraday = true
+  private intervalSeconds = 3600
+  private times: number[] = []
+  private timesFor: readonly Candle[] | null = null
   private precision = 2
   private needsViewReset = true
   private readonly crosshairListeners = new Set<CrosshairListener>()
@@ -179,6 +183,22 @@ export class ChartController {
     }
   }
 
+  /** Liga as ferramentas de desenho à série de candles deste gráfico. */
+  createDrawingController(container: HTMLElement, callbacks: DrawingCallbacks): DrawingController {
+    return new DrawingController(
+      {
+        chart: this.chart,
+        series: this.candleSeries,
+        container,
+        getTimes: () => this.getTimes(),
+        getIntervalSeconds: () => this.intervalSeconds,
+        formatPrice: (p) => formatPrice(p, this.precision),
+        getBackground: () => this.theme.background,
+      },
+      callbacks,
+    )
+  }
+
   /** Elemento do painel onde o indicador é desenhado (para posicionar sua legenda). */
   getIndicatorPaneElement(id: string): HTMLElement | null {
     return this.indicatorViews.get(id)?.getPaneElement() ?? null
@@ -238,8 +258,18 @@ export class ChartController {
 
   private configureInterval(interval: IntervalId) {
     this.intraday = isIntraday(interval)
+    this.intervalSeconds = getInterval(interval).seconds
     this.timeOffset = this.intraday ? localOffsetSeconds() : 0
     this.chart.applyOptions({ timeScale: { timeVisible: this.intraday } })
+  }
+
+  /** Tempos reais dos candles (cache refeito quando a série muda). */
+  private getTimes(): readonly number[] {
+    if (this.timesFor !== this.candles) {
+      this.times = this.candles.map((c) => c.time)
+      this.timesFor = this.candles
+    }
+    return this.times
   }
 
   private updatePrecision() {

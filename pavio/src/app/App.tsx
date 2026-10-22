@@ -1,10 +1,12 @@
 import { ChartView } from '../components/chart/ChartView'
 import { Footer } from '../components/common/Footer'
 import { Logo } from '../components/common/Logo'
+import { DrawingToolbar } from '../components/drawings/DrawingToolbar'
 import { IndicatorMenu } from '../components/indicators/IndicatorMenu'
 import { ConnectionBadge } from '../components/toolbar/ConnectionBadge'
 import { SymbolPicker } from '../components/toolbar/SymbolPicker'
 import { TimeframeSelect } from '../components/toolbar/TimeframeSelect'
+import { useDrawingsStore } from '../store/drawingsStore'
 import { MAX_INDICATORS, useIndicatorsStore } from '../store/indicatorsStore'
 import { useSettingsStore } from '../store/settingsStore'
 import styles from './App.module.css'
@@ -16,6 +18,12 @@ export function App() {
   const setInterval = useSettingsStore((s) => s.setInterval)
   const indicatorCount = useIndicatorsStore((s) => s.indicators.length)
   const addIndicator = useIndicatorsStore((s) => s.add)
+  const tool = useDrawingsStore((s) => s.tool)
+  const selectedDrawing = useDrawingsStore((s) => s.selectedId)
+  const drawingCount = useDrawingsStore((s) => s.drawings.filter((d) => d.symbol === symbol).length)
+  const setTool = useDrawingsStore((s) => s.setTool)
+  const removeDrawing = useDrawingsStore((s) => s.remove)
+  const removeAllDrawings = useDrawingsStore((s) => s.removeAllForSymbol)
 
   return (
     <div className={styles.shell}>
@@ -31,7 +39,21 @@ export function App() {
         <ConnectionBadge />
       </header>
       <main className={styles.main}>
-        <ChartView symbol={symbol} interval={interval} />
+        <DrawingToolbar
+          tool={tool}
+          hasSelection={selectedDrawing !== null}
+          drawingCount={drawingCount}
+          onToolChange={setTool}
+          onRemoveSelected={() => selectedDrawing && removeDrawing(selectedDrawing)}
+          onRemoveAll={() => {
+            if (window.confirm(`Remover todos os ${drawingCount} desenhos de ${symbol}?`)) {
+              removeAllDrawings(symbol)
+            }
+          }}
+        />
+        <div className={styles.chartArea}>
+          <ChartView symbol={symbol} interval={interval} />
+        </div>
       </main>
       <Footer />
     </div>

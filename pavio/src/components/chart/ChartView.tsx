@@ -2,11 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChartController } from '../../chart/ChartController'
 import { readChartTheme } from '../../chart/theme'
 import { pricePrecision } from '../../domain/candles'
+import { DRAWING_LABELS } from '../../domain/drawings/types'
 import { INDICATORS, computeIndicator } from '../../domain/indicators/registry'
 import type { IntervalId } from '../../domain/types'
+import { useChartDrawings } from '../../hooks/useChartDrawings'
 import { useKlines } from '../../hooks/useKlines'
 import { usePaneTops } from '../../hooks/usePaneTops'
 import { describeLoadError } from '../../services/binance'
+import { useDrawingsStore } from '../../store/drawingsStore'
 import { useIndicatorsStore } from '../../store/indicatorsStore'
 import { IndicatorLegendRow } from '../indicators/IndicatorLegendRow'
 import { IndicatorSettingsDialog } from '../indicators/IndicatorSettingsDialog'
@@ -61,6 +64,9 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
     controller?.setData(`${symbol}:${interval}`, interval, candles, results)
   }, [controller, symbol, interval, candles, results])
 
+  const { draftPoints } = useChartDrawings(controller, containerRef, symbol)
+  const tool = useDrawingsStore((s) => s.tool)
+
   const overlays = results.filter((r) => INDICATORS[r.config.type].placement === 'overlay')
   const panes = results.filter((r) => INDICATORS[r.config.type].placement === 'pane')
   const paneTops = usePaneTops(
@@ -83,7 +89,7 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
   }
 
   return (
-    <div className={styles.wrapper} ref={wrapperRef}>
+    <div className={styles.wrapper} ref={wrapperRef} data-tool={tool}>
       <div ref={containerRef} className={styles.canvas} data-testid="chart" />
       <div className={styles.legendStack}>
         <ChartLegend symbol={symbol} interval={interval} candle={legendCandle} />
@@ -105,6 +111,17 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
           </div>
         )
       })}
+      {tool !== 'cursor' && (
+        <div className={styles.hint} role="status" data-testid="drawing-hint">
+          <strong>{DRAWING_LABELS[tool]}:</strong>{' '}
+          {tool === 'horizontal'
+            ? 'clique no preço desejado'
+            : draftPoints === 0
+              ? 'clique no ponto inicial'
+              : 'clique no ponto final'}{' '}
+          · Esc cancela
+        </div>
+      )}
       {status === 'loading' && (
         <div className={styles.overlay} role="status">
           Carregando dados…

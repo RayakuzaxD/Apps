@@ -11,6 +11,34 @@
   inset: 0;
 }
 
+.wrapper:not([data-tool='cursor']) .canvas {
+  cursor: crosshair;
+}
+
+.hint {
+  position: absolute;
+  z-index: 6;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 6px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+  pointer-events: none;
+}
+
+.hint strong {
+  color: var(--text);
+}
+
 .legendStack {
   position: absolute;
   z-index: 5;

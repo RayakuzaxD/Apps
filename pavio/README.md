@@ -49,7 +49,7 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
 - [x] 1. Candles com troca de par e timeframe
 - [x] 2. Volume
 - [x] 3. Indicadores: MME, MMS, RSI, MACD, Bandas de Bollinger
-- [ ] 4. Desenho: linha de tendência, linha horizontal, Fibonacci
+- [x] 4. Desenho: linha de tendência, linha horizontal, Fibonacci
 - [ ] 5. Watchlist em tempo real
 - [ ] 6. Tema claro/escuro
 
@@ -67,6 +67,12 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
   `src/domain/indicators` como funções puras: médias exponenciais semeadas pela
   média simples, IFR com suavização de Wilder e Bollinger com desvio padrão
   populacional.
+- **Desenhos:** linha de tendência, linha horizontal e retração de Fibonacci,
+  desenhadas por uma primitiva do Lightweight Charts (`src/drawings`). Cada
+  ponto é ancorado em tempo real e preço, então o desenho sobrevive à troca de
+  timeframe. No modo cursor, clicar seleciona e arrastar move o desenho ou uma
+  alça; Delete remove e Esc cancela. Os desenhos são guardados por par no
+  `localStorage`.
 - **Horário:** candles intradiários são exibidos no fuso local do navegador;
   candles diários seguem o dia UTC da Binance.
 - **Preferências:** par e timeframe ficam salvos no `localStorage`.

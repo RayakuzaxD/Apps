@@ -33,6 +33,13 @@
 }
 
 .main {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  min-height: 0;
+}
+
+.chartArea {
   position: relative;
+  min-width: 0;
   min-height: 0;
 }

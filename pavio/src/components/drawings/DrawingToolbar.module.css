@@ -1,0 +1,61 @@
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 44px;
+  padding: var(--space-2) 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tool {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tool:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tool[aria-pressed='true'] {
+  background: var(--surface-2);
+  color: var(--brand);
+}
+
+.tool:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.tool:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.divider {
+  width: 24px;
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--border);
+}
+
+@media (max-width: 640px) {
+  .toolbar {
+    width: 38px;
+  }
+
+  .tool {
+    width: 30px;
+    height: 30px;
+  }
+}
