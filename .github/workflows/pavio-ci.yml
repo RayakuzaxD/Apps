@@ -5,6 +5,7 @@ on:
     paths: ['pavio/**', '.github/workflows/pavio-ci.yml']
   pull_request:
     paths: ['pavio/**', '.github/workflows/pavio-ci.yml']
+  workflow_dispatch:
 
 defaults:
   run:
@@ -30,3 +31,25 @@ jobs:
         with:
           name: playwright-results
           path: pavio/test-results
+      # O dist/ publicado é o mesmo que passou nos testes e2e.
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: pavio/dist
+
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

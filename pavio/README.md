@@ -3,6 +3,8 @@
 App web open source de análise gráfica para criptoativos: candles, volume,
 indicadores, ferramentas de desenho e watchlist em tempo real.
 
+**Demo:** https://rayakuzaxd.github.io/Apps/
+
 > Projeto independente. Não é afiliado à TradingView nem à Binance.
 
 ## Stack
@@ -42,6 +44,15 @@ funciona em regiões onde `api.binance.com` é bloqueado. Para trocar, defina
 
 Para usar um Chromium já instalado nos testes e2e, defina `PW_CHROMIUM_PATH`.
 Caso contrário, rode `npx playwright install chromium` uma vez.
+
+## Publicação
+
+Cada push no `main` que passa no CI (checks, build e e2e) publica o `dist/`
+no GitHub Pages pelo workflow `.github/workflows/pavio-ci.yml`. O build usa
+caminhos relativos (`base: './'`), então funciona em qualquer subcaminho.
+
+Para ativar num fork: em **Settings → Pages**, escolha **GitHub Actions** como
+fonte.
 
 ## Roadmap do MVP
 
