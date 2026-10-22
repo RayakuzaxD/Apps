@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { mergeCandle, mergeCandles, pricePrecision } from './candles'
+import {
+  findCandleIndex,
+  mergeCandle,
+  mergeCandles,
+  prependCandles,
+  pricePrecision,
+} from './candles'
 import type { Candle } from './types'
 
 const c = (time: number, close = 1): Candle => ({
@@ -44,6 +50,48 @@ describe('mergeCandle', () => {
       [1, 2],
       [2, 4],
     ])
+  })
+})
+
+describe('prependCandles', () => {
+  const times = (cs: Candle[]) => cs.map((x) => x.time)
+
+  it('junta histórico anterior ao início', () => {
+    expect(times(prependCandles([c(1), c(2)], [c(3), c(4)]))).toEqual([1, 2, 3, 4])
+  })
+
+  it('descarta candles sobrepostos e mantém os da série atual', () => {
+    const result = prependCandles([c(1), c(2, 9), c(3, 9)], [c(2), c(3)])
+    expect(times(result)).toEqual([1, 2, 3])
+    expect(result[1]!.close).toBe(1)
+  })
+
+  it('devolve a mesma série quando não há nada anterior', () => {
+    const series = [c(3), c(4)]
+    expect(prependCandles([], series)).toBe(series)
+    expect(prependCandles([c(5)], series)).toBe(series)
+  })
+
+  it('aceita série atual vazia', () => {
+    expect(times(prependCandles([c(1)], []))).toEqual([1])
+  })
+})
+
+describe('findCandleIndex', () => {
+  const series = [c(10), c(20), c(30), c(40)]
+
+  it.each([
+    [10, 0],
+    [30, 2],
+    [40, 3],
+    [25, -1],
+    [5, -1],
+  ])('horário %i -> índice %i', (time, expected) => {
+    expect(findCandleIndex(series, time)).toBe(expected)
+  })
+
+  it('aceita série vazia', () => {
+    expect(findCandleIndex([], 10)).toBe(-1)
   })
 })
 

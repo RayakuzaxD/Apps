@@ -37,23 +37,25 @@ async function getJson(
   return body
 }
 
+/** Máximo de candles por pedido aceito pela Binance. */
+export const KLINES_PAGE_SIZE = 1000
+
 export interface FetchKlinesParams {
   symbol: string
   interval: IntervalId
   limit?: number
+  /** Busca só candles abertos até este instante (ms), para carregar histórico antigo. */
+  endTime?: number
   signal?: AbortSignal
 }
 
 export async function fetchKlines(
-  { symbol, interval, limit = 1000, signal }: FetchKlinesParams,
+  { symbol, interval, limit = KLINES_PAGE_SIZE, endTime, signal }: FetchKlinesParams,
   deps: RestDeps = {},
 ): Promise<Candle[]> {
-  const body = await getJson(
-    '/api/v3/klines',
-    { symbol, interval, limit: String(limit) },
-    signal,
-    deps,
-  )
+  const params: Record<string, string> = { symbol, interval, limit: String(limit) }
+  if (endTime !== undefined) params.endTime = String(endTime)
+  const body = await getJson('/api/v3/klines', params, signal, deps)
   if (!Array.isArray(body)) throw new BinanceApiError('Resposta inesperada da API', 200)
   return body.map(parseRestKline)
 }

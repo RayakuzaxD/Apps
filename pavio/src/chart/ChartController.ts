@@ -9,6 +9,7 @@ import {
   type HistogramData,
   type IChartApi,
   type ISeriesApi,
+  type LogicalRange,
   type MouseEventParams,
   type Time,
   type UTCTimestamp,
@@ -33,8 +34,17 @@ import {
 
 const VOLUME_SCALE_ID = 'volume'
 
-/** Índice do candle sob o crosshair, ou null quando o mouse sai do gráfico. */
-export type CrosshairListener = (index: number | null) => void
+/** Candles restantes à esquerda da área visível abaixo dos quais pedimos histórico anterior. */
+export const OLDER_THRESHOLD_BARS = 50
+
+/** Horário (segundos UTC) do candle sob o crosshair, ou null quando o mouse sai do gráfico. */
+export type CrosshairListener = (time: number | null) => void
+
+/** Chamado quando a área visível se aproxima do primeiro candle carregado. */
+export type NeedOlderListener = () => void
+
+/** Chamado quando o primeiro candle carregado entra ou sai da área visível. */
+export type LeftEdgeListener = (visible: boolean) => void
 
 /**
  * Adaptador imperativo do Lightweight Charts. O React só chama métodos daqui;
@@ -55,6 +65,9 @@ export class ChartController {
   private precision = 2
   private needsViewReset = true
   private readonly crosshairListeners = new Set<CrosshairListener>()
+  private readonly needOlderListeners = new Set<NeedOlderListener>()
+  private readonly leftEdgeListeners = new Set<LeftEdgeListener>()
+  private leftEdgeVisible = false
   private readonly indicatorViews = new Map<string, IndicatorView>()
   private theme: ChartTheme
 
@@ -100,6 +113,7 @@ export class ChartController {
     this.volumeSeries.priceScale().applyOptions({ scaleMargins: VOLUME_SCALE_MARGINS })
 
     this.chart.subscribeCrosshairMove(this.handleCrosshair)
+    this.chart.timeScale().subscribeVisibleLogicalRangeChange(this.handleVisibleRange)
     this.applyTheme(theme)
   }
 
@@ -182,6 +196,10 @@ export class ChartController {
       this.chart.priceScale('right').applyOptions({ autoScale: true })
       this.chart.priceScale(VOLUME_SCALE_ID).applyOptions({ autoScale: true })
     }
+
+    // Com zoom bem aberto, o histórico recém-chegado pode ainda não preencher a
+    // tela, e a área visível não muda: confere a borda de novo.
+    if (plan.kind === 'replace') this.checkLeftEdge(this.chart.timeScale().getVisibleLogicalRange())
   }
 
   /** Liga as ferramentas de desenho à série de candles deste gráfico. */
@@ -210,9 +228,23 @@ export class ChartController {
     return () => this.crosshairListeners.delete(listener)
   }
 
+  /** Avisa quando o usuário rola até perto do início dos dados carregados. */
+  onNeedOlder(listener: NeedOlderListener): () => void {
+    this.needOlderListeners.add(listener)
+    return () => this.needOlderListeners.delete(listener)
+  }
+
+  onLeftEdgeVisible(listener: LeftEdgeListener): () => void {
+    this.leftEdgeListeners.add(listener)
+    return () => this.leftEdgeListeners.delete(listener)
+  }
+
   destroy() {
     this.chart.unsubscribeCrosshairMove(this.handleCrosshair)
+    this.chart.timeScale().unsubscribeVisibleLogicalRangeChange(this.handleVisibleRange)
     this.crosshairListeners.clear()
+    this.needOlderListeners.clear()
+    this.leftEdgeListeners.clear()
     for (const view of this.indicatorViews.values()) view.destroy()
     this.indicatorViews.clear()
     this.chart.remove()
@@ -302,13 +334,26 @@ export class ChartController {
     }
   }
 
+  private checkLeftEdge(range: LogicalRange | null) {
+    if (!range || this.candles.length === 0) return
+    const visible = range.from <= 0
+    if (visible !== this.leftEdgeVisible) {
+      this.leftEdgeVisible = visible
+      for (const l of this.leftEdgeListeners) l(visible)
+    }
+    if (range.from > OLDER_THRESHOLD_BARS) return
+    for (const l of this.needOlderListeners) l()
+  }
+
+  private readonly handleVisibleRange = (range: LogicalRange | null) => this.checkLeftEdge(range)
+
   private readonly handleCrosshair = (param: MouseEventParams<Time>) => {
     const logical = param.logical
-    let index: number | null = null
+    let time: number | null = null
     if (param.time !== undefined && logical !== undefined) {
-      const i = Math.round(logical)
-      if (i >= 0 && i < this.candles.length) index = i
+      const candle = this.candles[Math.round(logical)]
+      if (candle) time = candle.time
     }
-    for (const l of this.crosshairListeners) l(index)
+    for (const l of this.crosshairListeners) l(time)
   }
 }

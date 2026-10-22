@@ -66,7 +66,13 @@ fonte.
 
 ## Como funciona
 
-- **Histórico:** até 1000 candles via `GET /api/v3/klines`.
+- **Histórico:** 1000 candles via `GET /api/v3/klines` ao abrir o par. Ao rolar
+  para a esquerda até perto do primeiro candle (50 barras), o app busca os 1000
+  anteriores (`endTime`) e os junta ao início sem mexer no zoom nem na posição.
+  Para quando a Binance devolve menos que uma página (início do par) ou ao
+  chegar a 20 000 candles por série, para manter leve o recálculo dos
+  indicadores. Na recarga após reconexão, o histórico anterior é mantido se
+  encostar nos dados novos.
 - **Tempo real:** uma única conexão WebSocket combinada (`/stream`), com
   inscrições em lote (`SUBSCRIBE`/`UNSUBSCRIBE`) e reconexão com backoff
   exponencial. Após reconectar, o histórico é recarregado para cobrir lacunas.

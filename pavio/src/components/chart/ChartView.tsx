@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChartController } from '../../chart/ChartController'
 import { readChartTheme } from '../../chart/theme'
-import { pricePrecision } from '../../domain/candles'
+import { findCandleIndex, pricePrecision } from '../../domain/candles'
 import { DRAWING_LABELS } from '../../domain/drawings/types'
 import { INDICATORS, computeIndicator } from '../../domain/indicators/registry'
 import type { IntervalId } from '../../domain/types'
 import { useChartDrawings } from '../../hooks/useChartDrawings'
-import { useKlines } from '../../hooks/useKlines'
+import { useKlines, type OlderStatus } from '../../hooks/useKlines'
 import { usePaneTops } from '../../hooks/usePaneTops'
 import { describeLoadError } from '../../services/binance'
 import { useDrawingsStore } from '../../store/drawingsStore'
@@ -26,9 +26,14 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [controller, setController] = useState<ChartController | null>(null)
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  // Horário (e não índice) do candle sob o cursor: o índice muda quando entra histórico anterior.
+  const [hoveredTime, setHoveredTime] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const { candles, status, error, retry } = useKlines(symbol, interval)
+  const [leftEdgeVisible, setLeftEdgeVisible] = useState(false)
+  const { candles, status, error, retry, older, loadOlder, retryOlder } = useKlines(
+    symbol,
+    interval,
+  )
   const resolvedTheme = useResolvedTheme()
 
   const configs = useIndicatorsStore((s) => s.indicators)
@@ -45,11 +50,13 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
     const el = containerRef.current
     if (!el) return
     const ctl = new ChartController(el, readChartTheme())
-    const offCrosshair = ctl.onCrosshair(setHoveredIndex)
+    const offCrosshair = ctl.onCrosshair(setHoveredTime)
+    const offLeftEdge = ctl.onLeftEdgeVisible(setLeftEdgeVisible)
 
     setController(ctl)
     return () => {
       offCrosshair()
+      offLeftEdge()
       ctl.destroy()
       setController(null)
     }
@@ -60,6 +67,8 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
   useEffect(() => {
     controller?.applyTheme(readChartTheme())
   }, [controller, resolvedTheme])
+
+  useEffect(() => controller?.onNeedOlder(loadOlder), [controller, loadOlder])
 
   // Precisa rodar antes de usePaneTops: é aqui que os painéis são criados.
   useEffect(() => {
@@ -77,7 +86,8 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
     panes.map((r) => r.config.id),
   )
 
-  const index = hoveredIndex ?? (candles.length > 0 ? candles.length - 1 : null)
+  const hoveredIndex = hoveredTime === null ? -1 : findCandleIndex(candles, hoveredTime)
+  const index = hoveredIndex >= 0 ? hoveredIndex : candles.length > 0 ? candles.length - 1 : null
   const legendCandle = index === null ? null : (candles[index] ?? null)
   const precision = pricePrecision(candles[candles.length - 1]?.close ?? 1)
   const editing = configs.find((c) => c.id === editingId) ?? null
@@ -124,6 +134,9 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
           · Esc cancela
         </div>
       )}
+      {status === 'ready' && (
+        <OlderHistoryStatus older={older} edgeVisible={leftEdgeVisible} onRetry={retryOlder} />
+      )}
       {status === 'loading' && (
         <div className={styles.overlay} role="status">
           Carregando dados…
@@ -147,4 +160,37 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
       )}
     </div>
   )
+}
+
+interface OlderHistoryStatusProps {
+  older: OlderStatus
+  /** O primeiro candle está na tela: só então faz sentido avisar que não há mais. */
+  edgeVisible: boolean
+  onRetry: () => void
+}
+
+function OlderHistoryStatus({ older, edgeVisible, onRetry }: OlderHistoryStatusProps) {
+  if (older === 'idle') return null
+  if ((older === 'end' || older === 'limit') && !edgeVisible) return null
+  if (older === 'error') {
+    return (
+      <div className={styles.olderStatus} role="alert" data-testid="older-status">
+        Falha ao carregar histórico anterior ·{' '}
+        <button type="button" className={styles.olderRetry} onClick={onRetry}>
+          Tentar de novo
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.olderStatus} role="status" data-testid="older-status">
+      {OLDER_LABELS[older]}
+    </div>
+  )
+}
+
+const OLDER_LABELS: Record<Exclude<OlderStatus, 'idle' | 'error'>, string> = {
+  loading: 'Carregando histórico…',
+  end: 'Início do histórico',
+  limit: 'Limite de histórico atingido',
 }

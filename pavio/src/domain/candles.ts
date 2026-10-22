@@ -21,6 +21,33 @@ export function mergeCandles(candles: readonly Candle[], updates: readonly Candl
   return updates.reduce<Candle[]>((acc, c) => mergeCandle(acc, c), candles as Candle[])
 }
 
+/**
+ * Junta `older` (histórico anterior, em ordem) ao início de `candles`.
+ * Candles de `older` que se sobrepõem ao início de `candles` são descartados.
+ */
+export function prependCandles(older: readonly Candle[], candles: readonly Candle[]): Candle[] {
+  const first = candles[0]
+  if (!first) return older.slice()
+  let end = 0
+  while (end < older.length && older[end]!.time < first.time) end++
+  if (end === 0) return candles as Candle[]
+  return [...older.slice(0, end), ...candles]
+}
+
+/** Índice do candle com o horário dado (busca binária), ou -1. */
+export function findCandleIndex(candles: readonly Candle[], time: number): number {
+  let lo = 0
+  let hi = candles.length - 1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    const t = candles[mid]!.time
+    if (t === time) return mid
+    if (t < time) lo = mid + 1
+    else hi = mid - 1
+  }
+  return -1
+}
+
 /** Casas decimais de preço a partir da magnitude (a Binance não envia tick size no kline). */
 export function pricePrecision(price: number): number {
   const abs = Math.abs(price)

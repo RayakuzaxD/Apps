@@ -4,7 +4,7 @@ import { makeKlineEvent } from '../../tests/fixtures/klines'
 import { FakeWebSocket } from '../../tests/helpers/fakeWebSocket'
 import type { Candle } from '../domain/types'
 import { BinanceStream } from '../services/binance/stream'
-import { useKlines } from './useKlines'
+import { MAX_CANDLES, useKlines } from './useKlines'
 
 const mocks = vi.hoisted(() => ({
   fetchKlines: vi.fn(),
@@ -27,6 +27,10 @@ const c = (time: number, close = 100): Candle => ({
   close,
   volume: 5,
 })
+
+/** `count` candles de 1m terminando em `lastTime` (inclusive). */
+const series = (lastTime: number, count: number): Candle[] =>
+  Array.from({ length: count }, (_, i) => c(lastTime - (count - 1 - i) * 60))
 
 function deferred<T>() {
   let resolve!: (v: T) => void
@@ -139,5 +143,163 @@ describe('useKlines', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  describe('histórico anterior', () => {
+    const START = 1_000_000 * 60
+
+    async function ready(history: Candle[]) {
+      mocks.fetchKlines.mockResolvedValueOnce(history)
+      const hook = renderHook(({ s }) => useKlines(s, '1m'), { initialProps: { s: 'BTCUSDT' } })
+      await waitFor(() => expect(hook.result.current.status).toBe('ready'))
+      return hook
+    }
+
+    it('busca candles anteriores ao primeiro e junta ao início', async () => {
+      const { result } = await ready(series(START, 1000))
+      expect(result.current.older).toBe('idle')
+
+      mocks.fetchKlines.mockResolvedValueOnce(series(START - 1000 * 60, 1000))
+      act(() => result.current.loadOlder())
+      expect(result.current.older).toBe('loading')
+      await waitFor(() => expect(result.current.older).toBe('idle'))
+
+      const first = START - 999 * 60
+      expect(mocks.fetchKlines.mock.calls[1]![0]).toMatchObject({
+        symbol: 'BTCUSDT',
+        interval: '1m',
+        endTime: first * 1000 - 1,
+      })
+      expect(result.current.candles).toHaveLength(2000)
+      expect(result.current.candles[999]!.time).toBe(first - 60)
+      expect(result.current.candles[1000]!.time).toBe(first)
+    })
+
+    it('ignora pedidos repetidos enquanto carrega', async () => {
+      const { result } = await ready(series(START, 1000))
+      const older = deferred<Candle[]>()
+      mocks.fetchKlines.mockReturnValueOnce(older.promise)
+      act(() => result.current.loadOlder())
+      act(() => result.current.loadOlder())
+      expect(mocks.fetchKlines).toHaveBeenCalledTimes(2)
+      await act(async () => older.resolve(series(START - 1000 * 60, 1000)))
+    })
+
+    it('marca o início do histórico quando a Binance devolve menos que uma página', async () => {
+      const { result } = await ready(series(START, 1000))
+      mocks.fetchKlines.mockResolvedValueOnce(series(START - 1000 * 60, 10))
+      act(() => result.current.loadOlder())
+      await waitFor(() => expect(result.current.older).toBe('end'))
+      expect(result.current.candles).toHaveLength(1010)
+
+      act(() => result.current.loadOlder())
+      expect(mocks.fetchKlines).toHaveBeenCalledTimes(2)
+    })
+
+    it('histórico inicial curto já é o início do par', async () => {
+      const { result } = await ready(series(START, 50))
+      expect(result.current.older).toBe('end')
+      act(() => result.current.loadOlder())
+      expect(mocks.fetchKlines).toHaveBeenCalledTimes(1)
+    })
+
+    it('em falha, só tenta de novo com retryOlder', async () => {
+      const { result } = await ready(series(START, 1000))
+      mocks.fetchKlines.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      act(() => result.current.loadOlder())
+      await waitFor(() => expect(result.current.older).toBe('error'))
+      expect(result.current.status).toBe('ready')
+      expect(result.current.candles).toHaveLength(1000)
+
+      act(() => result.current.loadOlder())
+      expect(mocks.fetchKlines).toHaveBeenCalledTimes(2)
+
+      mocks.fetchKlines.mockResolvedValueOnce(series(START - 1000 * 60, 1000))
+      act(() => result.current.retryOlder())
+      await waitFor(() => expect(result.current.older).toBe('idle'))
+      expect(result.current.candles).toHaveLength(2000)
+    })
+
+    it('para no limite de candles por série', async () => {
+      const { result } = await ready(series(START, 1000))
+      for (let page = 1; page < MAX_CANDLES / 1000; page++) {
+        mocks.fetchKlines.mockResolvedValueOnce(series(START - page * 1000 * 60, 1000))
+        act(() => result.current.loadOlder())
+        await waitFor(() => expect(result.current.candles).toHaveLength((page + 1) * 1000))
+      }
+      expect(result.current.older).toBe('limit')
+      act(() => result.current.loadOlder())
+      expect(mocks.fetchKlines).toHaveBeenCalledTimes(MAX_CANDLES / 1000)
+    })
+
+    it('troca de par durante a carga cancela o pedido e descarta a resposta', async () => {
+      const { result, rerender } = await ready(series(START, 1000))
+      const older = deferred<Candle[]>()
+      mocks.fetchKlines.mockReturnValueOnce(older.promise).mockResolvedValueOnce([c(60)])
+      act(() => result.current.loadOlder())
+      rerender({ s: 'ETHUSDT' })
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+      await act(async () => older.resolve(series(START - 1000 * 60, 1000)))
+
+      expect(mocks.fetchKlines.mock.calls[1]![0].signal.aborted).toBe(true)
+      expect(result.current.candles).toEqual([c(60)])
+      expect(result.current.older).toBe('end')
+    })
+
+    describe('reconexão', () => {
+      beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
+      afterEach(() => vi.useRealTimers())
+
+      async function reconnect() {
+        act(() => FakeWebSocket.last().drop())
+        await act(async () => vi.advanceTimersByTime(20))
+        act(() => FakeWebSocket.last().open())
+      }
+
+      it('mantém o histórico anterior quando a recarga encosta nele', async () => {
+        const { result } = await ready(series(START, 1000))
+        act(() => FakeWebSocket.last().open())
+        mocks.fetchKlines.mockResolvedValueOnce(series(START - 1000 * 60, 1000))
+        act(() => result.current.loadOlder())
+        await waitFor(() => expect(result.current.candles).toHaveLength(2000))
+
+        mocks.fetchKlines.mockResolvedValueOnce(series(START + 5 * 60, 1000))
+        await reconnect()
+        await waitFor(() => expect(result.current.candles).toHaveLength(2005))
+        expect(result.current.candles[0]!.time).toBe(START - 1999 * 60)
+        expect(result.current.older).toBe('idle')
+      })
+
+      it('recomeça só com a recarga quando há lacuna', async () => {
+        const { result } = await ready(series(START, 1000))
+        act(() => FakeWebSocket.last().open())
+        mocks.fetchKlines.mockResolvedValueOnce(series(START - 1000 * 60, 10))
+        act(() => result.current.loadOlder())
+        await waitFor(() => expect(result.current.older).toBe('end'))
+
+        mocks.fetchKlines.mockResolvedValueOnce(series(START + 5000 * 60, 1000))
+        await reconnect()
+        await waitFor(() => expect(result.current.candles[0]!.time).toBe(START + 4001 * 60))
+        expect(result.current.candles).toHaveLength(1000)
+        expect(result.current.older).toBe('idle')
+      })
+
+      it('cancela a carga do histórico anterior em andamento', async () => {
+        const { result } = await ready(series(START, 1000))
+        act(() => FakeWebSocket.last().open())
+        const older = deferred<Candle[]>()
+        mocks.fetchKlines
+          .mockReturnValueOnce(older.promise)
+          .mockResolvedValueOnce(series(START + 60, 1000))
+        act(() => result.current.loadOlder())
+
+        await reconnect()
+        await waitFor(() => expect(result.current.candles.at(-1)!.time).toBe(START + 60))
+        expect(mocks.fetchKlines.mock.calls[1]![0].signal.aborted).toBe(true)
+        expect(result.current.older).toBe('idle')
+        await act(async () => older.resolve(series(START - 1000 * 60, 1000)))
+        expect(result.current.candles).toHaveLength(1001)
+      })
+    })
   })
 })
