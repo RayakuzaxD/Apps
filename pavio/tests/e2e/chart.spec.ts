@@ -21,12 +21,12 @@ test.describe('Etapa 1: gráfico de candles', () => {
     await expect(page.getByTestId('connection-status')).toHaveText('Ao vivo')
 
     expect(binance.klineRequests).toEqual([{ symbol: 'BTCUSDT', interval: '1h' }])
+    // A assinatura vai em lote junto com os streams da watchlist.
     await expect
-      .poll(() => binance.wsMessages)
-      .toContainEqual({
-        method: 'SUBSCRIBE',
-        params: ['btcusdt@kline_1h'],
-      })
+      .poll(() =>
+        binance.wsMessages.filter((m) => m.method === 'SUBSCRIBE').flatMap((m) => m.params),
+      )
+      .toContain('btcusdt@kline_1h')
   })
 
   test('atualiza o último candle em tempo real', async ({ page }) => {

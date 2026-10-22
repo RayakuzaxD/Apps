@@ -1,0 +1,255 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.count {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.form {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-transform: uppercase;
+}
+
+.input::placeholder {
+  text-transform: none;
+}
+
+.addButton {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.addButton:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.formError {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+  color: var(--down);
+  font-size: 12px;
+}
+
+.columns,
+.select {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 64px;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.columns {
+  padding: var(--space-1) 36px var(--space-1) var(--space-3);
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.columns span:not(:first-child) {
+  text-align: right;
+}
+
+.list {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-left: 2px solid transparent;
+}
+
+.row:hover {
+  background: var(--surface-2);
+}
+
+.row[aria-current='true'] {
+  border-left-color: var(--brand);
+  background: var(--surface-2);
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px var(--space-1) 7px var(--space-3);
+  font-size: 13px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select:focus-visible,
+.remove:focus-visible,
+.input:focus-visible,
+.addButton:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.name {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.quote {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.price,
+.change {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.price {
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+.price[data-flash='up'] {
+  animation: flash-up 0.9s ease-out;
+}
+
+.price[data-flash='down'] {
+  animation: flash-down 0.9s ease-out;
+}
+
+@keyframes flash-up {
+  from {
+    background: color-mix(in srgb, var(--up) 35%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+@keyframes flash-down {
+  from {
+    background: color-mix(in srgb, var(--down) 35%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .price[data-flash] {
+    animation: none;
+  }
+}
+
+.change[data-sign='up'] {
+  color: var(--up);
+}
+
+.change[data-sign='down'] {
+  color: var(--down);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.remove {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: var(--space-1);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.row:hover .remove,
+.remove:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .remove {
+    opacity: 1;
+  }
+}
+
+.remove:hover {
+  color: var(--down);
+}
+
+.empty {
+  padding: var(--space-4) var(--space-3);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Telas estreitas: a watchlist flutua sobre o gráfico. */
+@media (max-width: 900px) {
+  .panel {
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.2);
+  }
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { mergeCandle, mergeCandles } from '../domain/candles'
 import type { Candle, IntervalId } from '../domain/types'
 import {
+  explainLoadError,
   fetchKlines,
   getBinanceStream,
   isAbortError,
@@ -64,7 +65,9 @@ export function useKlines(symbol: string, interval: IntervalId): KlinesResult {
         // Numa recarga após reconexão, mantém os dados atuais e segue ao vivo.
         if (initial) {
           failed = true
-          setState({ key, candles: EMPTY, status: 'error', error })
+          const explained = await explainLoadError(error, symbol)
+          if (disposed) return
+          setState({ key, candles: EMPTY, status: 'error', error: explained })
         }
       }
     }

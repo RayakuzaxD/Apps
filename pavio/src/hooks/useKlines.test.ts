@@ -8,12 +8,14 @@ import { useKlines } from './useKlines'
 
 const mocks = vi.hoisted(() => ({
   fetchKlines: vi.fn(),
+  explainLoadError: vi.fn(async (error: unknown) => error),
   stream: null as unknown as BinanceStream,
 }))
 
 vi.mock('../services/binance', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/binance')>()),
   fetchKlines: mocks.fetchKlines,
+  explainLoadError: mocks.explainLoadError,
   getBinanceStream: () => mocks.stream,
 }))
 
@@ -104,6 +106,17 @@ describe('useKlines', () => {
     act(() => result.current.retry())
     await waitFor(() => expect(result.current.status).toBe('ready'))
     expect(result.current.candles).toEqual([c(60)])
+  })
+
+  it('usa o erro explicado (ex.: par inexistente com resposta bloqueada por CORS)', async () => {
+    const network = new TypeError('Failed to fetch')
+    const invalid = new Error('par inválido')
+    mocks.fetchKlines.mockRejectedValueOnce(network)
+    mocks.explainLoadError.mockResolvedValueOnce(invalid)
+    const { result } = renderHook(() => useKlines('NOPEUSDT', '1m'))
+    await waitFor(() => expect(result.current.status).toBe('error'))
+    expect(mocks.explainLoadError).toHaveBeenCalledWith(network, 'NOPEUSDT')
+    expect(result.current.error).toBe(invalid)
   })
 
   it('recarrega o histórico após reconexão do WebSocket', async () => {

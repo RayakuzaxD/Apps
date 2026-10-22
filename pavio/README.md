@@ -50,7 +50,7 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
 - [x] 2. Volume
 - [x] 3. Indicadores: MME, MMS, RSI, MACD, Bandas de Bollinger
 - [x] 4. Desenho: linha de tendência, linha horizontal, Fibonacci
-- [ ] 5. Watchlist em tempo real
+- [x] 5. Watchlist em tempo real
 - [ ] 6. Tema claro/escuro
 
 ## Como funciona
@@ -73,6 +73,15 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
   timeframe. No modo cursor, clicar seleciona e arrastar move o desenho ou uma
   alça; Delete remove e Esc cancela. Os desenhos são guardados por par no
   `localStorage`.
+- **Watchlist:** preço e variação de 24h de cada par, com snapshot inicial via
+  `/api/v3/ticker/24hr` (um pedido por par, para que um par inválido não afete
+  os outros) e tempo real pelo stream `@miniTicker`, em lotes de 200 ms. Clicar
+  num par abre o gráfico. A lista e a visibilidade do painel ficam salvas.
+- **Erros da Binance e CORS:** as respostas de erro da Binance (ex.: 400
+  "Invalid symbol") vêm sem cabeçalhos CORS, então o navegador as bloqueia e o
+  app só vê uma falha de rede. Nesse caso o app consulta a lista de pares
+  (`/api/v3/ticker/price`) para dizer se o par não existe ou se é problema de
+  conexão.
 - **Horário:** candles intradiários são exibidos no fuso local do navegador;
   candles diários seguem o dia UTC da Binance.
 - **Preferências:** par e timeframe ficam salvos no `localStorage`.
