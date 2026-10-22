@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { mergeCandle, mergeCandles } from '../domain/candles'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { mergeCandle, mergeCandles, prependCandles } from '../domain/candles'
 import type { Candle, IntervalId } from '../domain/types'
 import {
+  KLINES_PAGE_SIZE,
   explainLoadError,
   fetchKlines,
   getBinanceStream,
@@ -12,11 +13,25 @@ import {
 
 export type KlinesStatus = 'loading' | 'ready' | 'error'
 
+/**
+ * Situação do histórico anterior: `idle` pode carregar mais, `end` chegou ao
+ * início do par na Binance e `limit` atingiu o máximo de candles mantidos.
+ */
+export type OlderStatus = 'idle' | 'loading' | 'error' | 'end' | 'limit'
+
+/** Máximo de candles por série, para manter leve o recálculo dos indicadores. */
+export const MAX_CANDLES = 20_000
+
 export interface KlinesResult {
   candles: Candle[]
   status: KlinesStatus
   error: unknown
   retry: () => void
+  older: OlderStatus
+  /** Carrega candles anteriores ao primeiro (ignorado se não estiver `idle`). */
+  loadOlder: () => void
+  /** Tenta de novo após falha ao carregar o histórico anterior. */
+  retryOlder: () => void
 }
 
 interface State {
@@ -24,6 +39,7 @@ interface State {
   candles: Candle[]
   status: KlinesStatus
   error: unknown
+  older: OlderStatus
 }
 
 const EMPTY: Candle[] = []
@@ -32,11 +48,19 @@ const EMPTY: Candle[] = []
  * Histórico via REST + atualizações via WebSocket para um par/intervalo.
  * Eventos que chegam antes do histórico ficam em buffer e são mesclados depois.
  * Após uma reconexão do WebSocket, o histórico é recarregado para cobrir lacunas.
+ * Candles anteriores são buscados sob demanda (`loadOlder`) e juntados ao início.
  */
 export function useKlines(symbol: string, interval: IntervalId): KlinesResult {
   const key = `${symbol}:${interval}`
   const [attempt, setAttempt] = useState(0)
-  const [state, setState] = useState<State>({ key, candles: EMPTY, status: 'loading', error: null })
+  const [state, setState] = useState<State>({
+    key,
+    candles: EMPTY,
+    status: 'loading',
+    error: null,
+    older: 'idle',
+  })
+  const olderRef = useRef<{ load: () => void; retry: () => void } | null>(null)
 
   useEffect(() => {
     const stream = getBinanceStream()
@@ -45,20 +69,43 @@ export function useKlines(symbol: string, interval: IntervalId): KlinesResult {
     let candles: Candle[] = EMPTY
     let buffer: Candle[] | null = []
     let controller: AbortController | null = null
+    let olderController: AbortController | null = null
+    let older: OlderStatus = 'idle'
     let interrupted = false
+
+    const setOlder = (next: OlderStatus) => {
+      older = next
+      setState((s) => (s.key === key ? { ...s, older } : s))
+    }
 
     const load = async (initial: boolean) => {
       controller?.abort()
+      // Uma recarga pode trocar o início da série: o pedido antigo perde a referência.
+      if (older === 'loading') {
+        olderController?.abort()
+        setOlder('idle')
+      }
       const current = new AbortController()
       controller = current
       buffer = []
-      if (initial) setState({ key, candles: EMPTY, status: 'loading', error: null })
+      if (initial) setState({ key, candles: EMPTY, status: 'loading', error: null, older })
       try {
         const history = await fetchKlines({ symbol, interval, signal: current.signal })
         if (disposed || current.signal.aborted) return
-        candles = mergeCandles(history, buffer ?? [])
+        // Na recarga, mantém o histórico anterior se ele encosta no recarregado;
+        // com lacuna (desconexão longa), recomeça só com o recarregado.
+        const last = candles[candles.length - 1]
+        const contiguous =
+          last !== undefined && history[0] !== undefined && last.time >= history[0].time
+        if (contiguous) {
+          candles = prependCandles(candles, history)
+        } else {
+          candles = history
+          older = history.length < KLINES_PAGE_SIZE ? 'end' : 'idle'
+        }
+        candles = mergeCandles(candles, buffer ?? [])
         buffer = null
-        setState({ key, candles, status: 'ready', error: null })
+        setState({ key, candles, status: 'ready', error: null, older })
       } catch (error) {
         if (disposed || isAbortError(error)) return
         buffer = null
@@ -67,9 +114,46 @@ export function useKlines(symbol: string, interval: IntervalId): KlinesResult {
           failed = true
           const explained = await explainLoadError(error, symbol)
           if (disposed) return
-          setState({ key, candles: EMPTY, status: 'error', error: explained })
+          setState({ key, candles: EMPTY, status: 'error', error: explained, older })
         }
       }
+    }
+
+    const loadOlder = async () => {
+      const first = candles[0]
+      if (older !== 'idle' || failed || buffer || !first) return
+      if (candles.length >= MAX_CANDLES) {
+        setOlder('limit')
+        return
+      }
+      const current = new AbortController()
+      olderController = current
+      setOlder('loading')
+      try {
+        const rows = await fetchKlines({
+          symbol,
+          interval,
+          endTime: first.time * 1000 - 1,
+          signal: current.signal,
+        })
+        if (disposed || current.signal.aborted) return
+        candles = prependCandles(rows, candles)
+        older =
+          rows.length < KLINES_PAGE_SIZE ? 'end' : candles.length >= MAX_CANDLES ? 'limit' : 'idle'
+        setState((s) => (s.key === key ? { ...s, candles, older } : s))
+      } catch (error) {
+        if (disposed || isAbortError(error)) return
+        setOlder('error')
+      }
+    }
+
+    olderRef.current = {
+      load: () => void loadOlder(),
+      retry: () => {
+        if (older !== 'error') return
+        older = 'idle'
+        void loadOlder()
+      },
     }
 
     const offData = stream.subscribe(klineStreamName(symbol, interval), (data) => {
@@ -95,19 +179,29 @@ export function useKlines(symbol: string, interval: IntervalId): KlinesResult {
 
     return () => {
       disposed = true
+      olderRef.current = null
       controller?.abort()
+      olderController?.abort()
       offData()
       offStatus()
     }
   }, [key, symbol, interval, attempt])
 
+  const loadOlder = useCallback(() => olderRef.current?.load(), [])
+  const retryOlder = useCallback(() => olderRef.current?.retry(), [])
+
   // Enquanto o efeito da nova chave não roda, não exibe dados da série anterior.
-  const current =
-    state.key === key ? state : { key, candles: EMPTY, status: 'loading' as const, error: null }
+  const current: State =
+    state.key === key
+      ? state
+      : { key, candles: EMPTY, status: 'loading', error: null, older: 'idle' }
   return {
     candles: current.candles,
     status: current.status,
     error: current.error,
     retry: () => setAttempt((n) => n + 1),
+    older: current.older,
+    loadOlder,
+    retryOlder,
   }
 }

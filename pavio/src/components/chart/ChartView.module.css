@@ -120,3 +120,37 @@
 .retry:hover {
   border-color: var(--brand);
 }
+
+/* Situação do histórico anterior, no canto inferior esquerdo (acima do eixo de tempo). */
+.olderStatus {
+  position: absolute;
+  z-index: 6;
+  bottom: 36px;
+  left: var(--space-3);
+  max-width: calc(100% - 90px);
+  padding: 4px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.olderRetry {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.olderRetry:hover {
+  text-decoration: underline;
+}

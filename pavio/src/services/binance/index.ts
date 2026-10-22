@@ -1,7 +1,7 @@
 import { binanceConfig } from './config'
 import { BinanceStream } from './stream'
 
-export { BinanceApiError, fetchKlines } from './rest'
+export { BinanceApiError, KLINES_PAGE_SIZE, fetchKlines } from './rest'
 export { klineStreamName, parseKlineEvent } from './mappers'
 export type { StreamStatus } from './stream'
 

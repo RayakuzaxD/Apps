@@ -36,8 +36,35 @@ export function fixtureKlines(symbol: string, interval: string) {
   })
 }
 
+/**
+ * Histórico longo: `total` candles terminando onde o fixture padrão termina.
+ * Sem `endTime` a resposta traz os 1000 mais recentes, como a Binance.
+ */
+export function deepKlines(symbol: string, interval: string, total: number) {
+  const intervalMs = INTERVAL_MS[interval] ?? 3_600_000
+  return makeRestKlines(total, {
+    startMs: START_MS - (total - KLINE_COUNT) * intervalMs,
+    intervalMs,
+    startPrice: START_PRICE[symbol] ?? 1,
+    seed: symbol.length * 7 + interval.length,
+  })
+}
+
+/** Aplica `endTime` e `limit` como a Binance: os últimos `limit` candles abertos até `endTime`. */
+function pageOf(rows: (string | number)[][], url: URL) {
+  const endTime = url.searchParams.get('endTime')
+  const limit = Number(url.searchParams.get('limit') ?? 500)
+  const upTo = endTime === null ? rows : rows.filter((r) => Number(r[0]) <= Number(endTime))
+  return upTo.slice(-limit)
+}
+
+export interface MockOptions {
+  /** Total de candles disponíveis por série (padrão: `KLINE_COUNT`). */
+  historyTotal?: number
+}
+
 export interface BinanceMock {
-  klineRequests: { symbol: string; interval: string }[]
+  klineRequests: { symbol: string; interval: string; endTime?: number }[]
   wsMessages: { method: string; params: string[] }[]
   tickerRequests: string[]
   ws: () => WebSocketRoute
@@ -55,7 +82,7 @@ function failLikeBinance(route: Route) {
 }
 
 /** Intercepta REST e WebSocket da Binance com dados determinísticos. */
-export async function mockBinance(page: Page): Promise<BinanceMock> {
+export async function mockBinance(page: Page, options: MockOptions = {}): Promise<BinanceMock> {
   const klineRequests: BinanceMock['klineRequests'] = []
   const wsMessages: BinanceMock['wsMessages'] = []
   const tickerRequests: string[] = []
@@ -65,12 +92,18 @@ export async function mockBinance(page: Page): Promise<BinanceMock> {
     const url = new URL(route.request().url())
     const symbol = url.searchParams.get('symbol') ?? ''
     const interval = url.searchParams.get('interval') ?? ''
-    klineRequests.push({ symbol, interval })
+    const endTime = url.searchParams.get('endTime')
+    klineRequests.push(
+      endTime === null ? { symbol, interval } : { symbol, interval, endTime: Number(endTime) },
+    )
     if (!START_PRICE[symbol]) {
       await failLikeBinance(route)
       return
     }
-    await route.fulfill({ json: fixtureKlines(symbol, interval) })
+    const rows = options.historyTotal
+      ? deepKlines(symbol, interval, options.historyTotal)
+      : fixtureKlines(symbol, interval)
+    await route.fulfill({ json: pageOf(rows, url) })
   })
 
   await page.route('**/api/v3/ticker/24hr?**', async (route) => {

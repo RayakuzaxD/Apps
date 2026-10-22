@@ -24,6 +24,18 @@ describe('fetchKlines', () => {
     expect(candles[1]!.time - candles[0]!.time).toBe(3600)
   })
 
+  it('envia endTime para buscar histórico anterior', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([]))
+    await fetchKlines(
+      { symbol: 'BTCUSDT', interval: '1h', endTime: 1_700_000_000_000 - 1 },
+      { baseUrl: 'https://example.test', fetchImpl },
+    )
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://example.test/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=1000&endTime=1699999999999',
+      expect.anything(),
+    )
+  })
+
   it('propaga erro da Binance com código', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ code: -1121, msg: 'Invalid symbol.' }, 400))
     const promise = fetchKlines({ symbol: 'NOPEUSDT', interval: '1h' }, { fetchImpl })

@@ -6,7 +6,7 @@ import {
   type IndicatorConfig,
 } from '../domain/indicators/registry'
 import type { Candle } from '../domain/types'
-import { ChartController } from './ChartController'
+import { ChartController, OLDER_THRESHOLD_BARS } from './ChartController'
 import type { ChartTheme } from './theme'
 import { CANDLE_SCALE_MARGINS, VOLUME_SCALE_MARGINS } from './volume'
 
@@ -30,7 +30,15 @@ interface FakeSeries {
   getPane: () => { paneIndex: () => number; getHTMLElement: () => HTMLElement | null }
 }
 
-const fake = vi.hoisted(() => ({ series: [] as FakeSeries[], panes: [] as FakePane[] }))
+type RangeHandler = (range: { from: number; to: number } | null) => void
+
+const fake = vi.hoisted(() => ({
+  series: [] as FakeSeries[],
+  panes: [] as FakePane[],
+  visibleRange: null as { from: number; to: number } | null,
+  rangeHandlers: new Set<RangeHandler>(),
+  crosshairHandlers: new Set<(param: unknown) => void>(),
+}))
 
 vi.mock('lightweight-charts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('lightweight-charts')>()
@@ -91,9 +99,14 @@ vi.mock('lightweight-charts', async (importOriginal) => {
       panes: () => fake.panes,
       applyOptions: vi.fn(),
       priceScale: () => ({ applyOptions: vi.fn() }),
-      timeScale: () => ({ resetTimeScale: vi.fn() }),
-      subscribeCrosshairMove: vi.fn(),
-      unsubscribeCrosshairMove: vi.fn(),
+      timeScale: () => ({
+        resetTimeScale: vi.fn(),
+        getVisibleLogicalRange: () => fake.visibleRange,
+        subscribeVisibleLogicalRangeChange: (h: RangeHandler) => fake.rangeHandlers.add(h),
+        unsubscribeVisibleLogicalRangeChange: (h: RangeHandler) => fake.rangeHandlers.delete(h),
+      }),
+      subscribeCrosshairMove: (h: (param: unknown) => void) => fake.crosshairHandlers.add(h),
+      unsubscribeCrosshairMove: (h: (param: unknown) => void) => fake.crosshairHandlers.delete(h),
       remove: vi.fn(),
     }),
   }
@@ -317,5 +330,103 @@ describe('ChartController: troca de tema', () => {
       '#123123',
       '#123123',
     ])
+  })
+})
+
+describe('ChartController: histórico anterior e crosshair', () => {
+  const series = (count: number, start = 0) =>
+    Array.from({ length: count }, (_, i) => c((start + i) * 3600, 10, 11, 1))
+
+  const scroll = (from: number) => {
+    fake.visibleRange = { from, to: from + 100 }
+    for (const h of fake.rangeHandlers) h(fake.visibleRange)
+  }
+
+  beforeEach(() => {
+    fake.series = []
+    fake.panes = []
+    fake.visibleRange = null
+    fake.rangeHandlers.clear()
+    fake.crosshairHandlers.clear()
+  })
+
+  it('avisa quando a área visível chega perto do primeiro candle', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const listener = vi.fn()
+    ctl.onNeedOlder(listener)
+    ctl.setData('BTCUSDT:1h', '1h', series(1000))
+
+    scroll(800)
+    expect(listener).not.toHaveBeenCalled()
+    scroll(OLDER_THRESHOLD_BARS + 1)
+    expect(listener).not.toHaveBeenCalled()
+    scroll(OLDER_THRESHOLD_BARS)
+    expect(listener).toHaveBeenCalledTimes(1)
+    scroll(-20)
+    expect(listener).toHaveBeenCalledTimes(2)
+  })
+
+  it('não avisa sem dados', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const listener = vi.fn()
+    ctl.onNeedOlder(listener)
+    scroll(0)
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('confere a borda de novo quando o histórico anterior chega', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const listener = vi.fn()
+    ctl.onNeedOlder(listener)
+    const recent = series(1000, 1000)
+    ctl.setData('BTCUSDT:1h', '1h', recent)
+
+    // Zoom aberto: mesmo com o histórico novo, a borda segue visível.
+    fake.visibleRange = { from: -500, to: 2000 }
+    ctl.setData('BTCUSDT:1h', '1h', [...series(1000), ...recent])
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('informa quando o primeiro candle entra e sai da tela', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const listener = vi.fn()
+    ctl.onLeftEdgeVisible(listener)
+    ctl.setData('BTCUSDT:1h', '1h', series(1000))
+
+    scroll(500)
+    expect(listener).not.toHaveBeenCalled()
+    scroll(0)
+    expect(listener).toHaveBeenLastCalledWith(true)
+    scroll(-30)
+    expect(listener).toHaveBeenCalledTimes(1)
+    scroll(10)
+    expect(listener).toHaveBeenLastCalledWith(false)
+    expect(listener).toHaveBeenCalledTimes(2)
+  })
+
+  it('para de avisar depois de destroy', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const listener = vi.fn()
+    ctl.onNeedOlder(listener)
+    ctl.setData('BTCUSDT:1h', '1h', series(10))
+    ctl.destroy()
+    expect(fake.rangeHandlers.size).toBe(0)
+  })
+
+  it('informa o horário real do candle sob o crosshair', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const listener = vi.fn()
+    ctl.onCrosshair(listener)
+    ctl.setData('BTCUSDT:1d', '1d', series(3))
+    const move = (param: unknown) => {
+      for (const h of fake.crosshairHandlers) h(param)
+    }
+
+    move({ time: 7200, logical: 2 })
+    expect(listener).toHaveBeenLastCalledWith(7200)
+    move({ time: undefined, logical: undefined })
+    expect(listener).toHaveBeenLastCalledWith(null)
+    move({ time: 0, logical: 5 })
+    expect(listener).toHaveBeenLastCalledWith(null)
   })
 })
