@@ -16,6 +16,7 @@ export function TimeframeSelect({ value, onChange }: TimeframeSelectProps) {
           type="button"
           className={styles.button}
           aria-pressed={interval.id === value}
+          title={interval.name}
           onClick={() => onChange(interval.id)}
         >
           {interval.label}

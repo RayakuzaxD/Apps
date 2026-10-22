@@ -17,3 +17,13 @@
 .footer a:hover {
   color: var(--text);
 }
+
+@media (max-width: 600px) {
+  .footer {
+    flex-wrap: wrap;
+    gap: 0 var(--space-2);
+    padding: 2px var(--space-2);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+}

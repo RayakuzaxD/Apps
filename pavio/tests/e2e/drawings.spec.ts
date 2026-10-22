@@ -100,6 +100,9 @@ test.describe('Etapa 4: ferramentas de desenho', () => {
 
   test('Fibonacci: dois cliques desenham os níveis entre os pontos', async ({ page }) => {
     const { at } = await setup(page)
+    // Os níveis são de preço: só em escala linear o 0,5 fica no meio dos pontos em pixels.
+    await page.getByTestId('log-scale').click()
+    await expect(page.getByTestId('log-scale')).toHaveAttribute('aria-pressed', 'false')
     await page.getByRole('button', { name: 'Retração de Fibonacci' }).click()
     const a = at(0.25, 0.6)
     const b = at(0.55, 0.2)

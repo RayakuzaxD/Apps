@@ -38,6 +38,7 @@ const fake = vi.hoisted(() => ({
   visibleRange: null as { from: number; to: number } | null,
   rangeHandlers: new Set<RangeHandler>(),
   crosshairHandlers: new Set<(param: unknown) => void>(),
+  chartScales: {} as Record<string, { applyOptions: ReturnType<typeof vi.fn> }>,
 }))
 
 vi.mock('lightweight-charts', async (importOriginal) => {
@@ -98,7 +99,7 @@ vi.mock('lightweight-charts', async (importOriginal) => {
       },
       panes: () => fake.panes,
       applyOptions: vi.fn(),
-      priceScale: () => ({ applyOptions: vi.fn() }),
+      priceScale: (id: string) => (fake.chartScales[id] ??= { applyOptions: vi.fn() }),
       timeScale: () => ({
         resetTimeScale: vi.fn(),
         getVisibleLogicalRange: () => fake.visibleRange,
@@ -428,5 +429,36 @@ describe('ChartController: histórico anterior e crosshair', () => {
     expect(listener).toHaveBeenLastCalledWith(null)
     move({ time: 0, logical: 5 })
     expect(listener).toHaveBeenLastCalledWith(null)
+  })
+})
+
+describe('ChartController: escala log', () => {
+  it('alterna a escala de preço entre logarítmica e normal', async () => {
+    const { PriceScaleMode } = await import('lightweight-charts')
+    fake.chartScales = {}
+    const ctl = new ChartController(document.createElement('div'), theme)
+    ctl.setLogScale(true)
+    expect(fake.chartScales.right!.applyOptions).toHaveBeenLastCalledWith({
+      mode: PriceScaleMode.Logarithmic,
+    })
+    ctl.setLogScale(false)
+    expect(fake.chartScales.right!.applyOptions).toHaveBeenLastCalledWith({
+      mode: PriceScaleMode.Normal,
+    })
+  })
+  it('painéis de indicador continuam em escala linear com o preço em log', async () => {
+    const { PriceScaleMode } = await import('lightweight-charts')
+    fake.series = []
+    fake.panes = []
+    fake.chartScales = {}
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const candles = Array.from({ length: 30 }, (_, i) => c(i * 86_400, 10, 11 + (i % 3), 1))
+    const rsi = { id: 'r', type: 'rsi' as const, params: defaultParams('rsi'), visible: true }
+    ctl.setData('X:1d', '1d', candles, [computeIndicator(rsi, candles)])
+    const rsiSeries = fake.series.find((x) => x.pane.index === 1)!
+    rsiSeries.scale.applyOptions.mockClear()
+
+    ctl.setLogScale(true)
+    expect(rsiSeries.scale.applyOptions).toHaveBeenCalledWith({ mode: PriceScaleMode.Normal })
   })
 })

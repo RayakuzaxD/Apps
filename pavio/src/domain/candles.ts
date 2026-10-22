@@ -48,6 +48,51 @@ export function findCandleIndex(candles: readonly Candle[], time: number): numbe
   return -1
 }
 
+const DAY = 86_400
+
+/** Início (segundos UTC) da semana do calendário: segunda-feira 00:00 UTC, como na Binance. */
+export function weekStart(time: number): number {
+  const day = Math.floor(time / DAY) * DAY
+  const weekday = new Date(day * 1000).getUTCDay() // 0 = domingo
+  return day - ((weekday + 6) % 7) * DAY
+}
+
+/** Início (segundos UTC) do mês do calendário. */
+export function monthStart(time: number): number {
+  const d = new Date(time * 1000)
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000
+}
+
+/** Fim (exclusivo, segundos UTC) do período que abre em `time`: o mês tem duração variável. */
+export function periodEnd(time: number, intervalSeconds: number, calendarMonth: boolean): number {
+  return calendarMonth ? monthStart(time + 32 * DAY) : time + intervalSeconds
+}
+
+/**
+ * Agrupa candles (em ordem) por período: abertura do primeiro, fechamento do
+ * último, máxima e mínima do período e soma do volume. `bucket` dá o início
+ * do período de cada candle (ex.: `weekStart`).
+ */
+export function aggregateCandles(
+  candles: readonly Candle[],
+  bucket: (time: number) => number,
+): Candle[] {
+  const result: Candle[] = []
+  for (const c of candles) {
+    const time = bucket(c.time)
+    const last = result[result.length - 1]
+    if (last && last.time === time) {
+      last.high = Math.max(last.high, c.high)
+      last.low = Math.min(last.low, c.low)
+      last.close = c.close
+      last.volume += c.volume
+    } else {
+      result.push({ ...c, time })
+    }
+  }
+  return result
+}
+
 /** Casas decimais de preço a partir da magnitude (a Binance não envia tick size no kline). */
 export function pricePrecision(price: number): number {
   const abs = Math.abs(price)

@@ -39,7 +39,7 @@ export function Watchlist({
   }
 
   return (
-    <aside className={styles.panel} aria-label="Watchlist">
+    <section className={styles.panel} aria-label="Watchlist">
       <div className={styles.header}>
         <h2 className={styles.title}>Watchlist</h2>
         <span className={styles.count}>{symbols.length} pares</span>
@@ -86,7 +86,7 @@ export function Watchlist({
           ))}
         </ul>
       )}
-    </aside>
+    </section>
   )
 }
 

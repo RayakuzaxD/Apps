@@ -4,16 +4,20 @@ import { Footer } from '../components/common/Footer'
 import { Logo } from '../components/common/Logo'
 import { DrawingToolbar } from '../components/drawings/DrawingToolbar'
 import { IndicatorMenu } from '../components/indicators/IndicatorMenu'
+import { ReadingPanel } from '../components/panel/ReadingPanel'
+import { SidePanel } from '../components/panel/SidePanel'
 import { ConnectionBadge } from '../components/toolbar/ConnectionBadge'
 import { SymbolPicker } from '../components/toolbar/SymbolPicker'
 import { ThemeMenu } from '../components/toolbar/ThemeMenu'
 import { TimeframeSelect } from '../components/toolbar/TimeframeSelect'
 import toolbarStyles from '../components/toolbar/Toolbar.module.css'
 import { WatchlistPanel } from '../components/watchlist/WatchlistPanel'
+import { useIndicatorResults } from '../hooks/useIndicatorResults'
+import { useKlines } from '../hooks/useKlines'
 import { useDrawingsStore } from '../store/drawingsStore'
 import { MAX_INDICATORS, useIndicatorsStore } from '../store/indicatorsStore'
+import { usePanelStore } from '../store/panelStore'
 import { useSettingsStore } from '../store/settingsStore'
-import { useWatchlistStore } from '../store/watchlistStore'
 import styles from './App.module.css'
 
 export function App() {
@@ -31,8 +35,12 @@ export function App() {
   const setTool = useDrawingsStore((s) => s.setTool)
   const removeDrawing = useDrawingsStore((s) => s.remove)
   const removeAllDrawings = useDrawingsStore((s) => s.removeAllForSymbol)
-  const watchlistOpen = useWatchlistStore((s) => s.open)
-  const setWatchlistOpen = useWatchlistStore((s) => s.setOpen)
+  const panelOpen = usePanelStore((s) => s.open)
+  const panelTab = usePanelStore((s) => s.tab)
+  const setPanelOpen = usePanelStore((s) => s.setOpen)
+  const setPanelTab = usePanelStore((s) => s.setTab)
+  const klines = useKlines(symbol, interval)
+  const results = useIndicatorResults(klines.candles)
 
   return (
     <div className={styles.shell}>
@@ -42,18 +50,20 @@ export function App() {
           <span className={styles.brand}>Pavio</span>
         </div>
         <SymbolPicker value={symbol} onChange={setSymbol} />
-        <TimeframeSelect value={interval} onChange={setInterval} />
-        <IndicatorMenu count={indicatorCount} max={MAX_INDICATORS} onAdd={addIndicator} />
+        <div className={styles.tools}>
+          <TimeframeSelect value={interval} onChange={setInterval} />
+          <IndicatorMenu count={indicatorCount} max={MAX_INDICATORS} onAdd={addIndicator} />
+        </div>
         <div className={styles.spacer} />
         <ConnectionBadge />
         <ThemeMenu value={theme} onChange={setTheme} />
         <button
           type="button"
           className={toolbarStyles.button}
-          aria-pressed={watchlistOpen}
-          aria-label={watchlistOpen ? 'Ocultar watchlist' : 'Mostrar watchlist'}
-          title="Watchlist"
-          onClick={() => setWatchlistOpen(!watchlistOpen)}
+          aria-pressed={panelOpen}
+          aria-label={panelOpen ? 'Ocultar painel' : 'Mostrar painel'}
+          title="Leitura do dia e watchlist"
+          onClick={() => setPanelOpen(!panelOpen)}
         >
           <PanelRight size={18} aria-hidden="true" />
         </button>
@@ -72,9 +82,25 @@ export function App() {
           }}
         />
         <div className={styles.chartArea}>
-          <ChartView symbol={symbol} interval={interval} />
+          <ChartView symbol={symbol} interval={interval} klines={klines} results={results} />
         </div>
-        {watchlistOpen && <WatchlistPanel />}
+        {panelOpen && (
+          <SidePanel
+            tab={panelTab}
+            onTabChange={setPanelTab}
+            onClose={() => setPanelOpen(false)}
+            reading={
+              <ReadingPanel
+                symbol={symbol}
+                interval={interval}
+                candles={klines.candles}
+                results={results}
+                status={klines.status}
+              />
+            }
+            watchlist={<WatchlistPanel />}
+          />
+        )}
       </main>
       <Footer />
     </div>

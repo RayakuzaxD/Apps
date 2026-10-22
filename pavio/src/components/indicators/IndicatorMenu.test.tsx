@@ -1,22 +1,28 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { IndicatorMenu } from './IndicatorMenu'
 
 describe('IndicatorMenu', () => {
-  it('lista os 5 indicadores e adiciona o escolhido', async () => {
+  it('agrupa os indicadores por pacote e adiciona o escolhido', async () => {
     const onAdd = vi.fn()
     render(<IndicatorMenu count={0} max={12} onAdd={onAdd} />)
     await userEvent.click(screen.getByRole('button', { name: /Indicadores/ }))
-    expect(
-      screen.getAllByRole('menuitem').map((i) => i.querySelector('span')?.textContent),
-    ).toEqual([
-      'Média Móvel Exponencial (MME)',
-      'Média Móvel Simples (MMS)',
+    const names = (group: string) =>
+      within(screen.getByRole('group', { name: group }))
+        .getAllByRole('menuitem')
+        .map((i) => i.querySelector('span')?.textContent)
+    expect(names('Ciclo & On-chain')).toEqual([
       'Bandas de Bollinger (BB)',
       'Índice de Força Relativa (IFR)',
+    ])
+    expect(names('Gerais')).toEqual([
+      'Média Móvel Exponencial (MME)',
+      'Média Móvel Simples (MMS)',
       'MACD (MACD)',
     ])
+    // Pacote sem indicadores ainda não aparece.
+    expect(screen.queryByRole('group', { name: 'Macro & Liquidez' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('menuitem', { name: /Força Relativa/ }))
     expect(onAdd).toHaveBeenCalledWith('rsi')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()

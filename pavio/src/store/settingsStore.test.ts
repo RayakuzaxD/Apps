@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizeSettings, useSettingsStore } from './settingsStore'
+import { defaultLogScale, sanitizeSettings, useSettingsStore } from './settingsStore'
 
 describe('sanitizeSettings', () => {
   it('mantém valores válidos', () => {
@@ -27,6 +27,32 @@ describe('useSettingsStore', () => {
     useSettingsStore.getState().setInterval('5m')
     expect(useSettingsStore.getState()).toMatchObject({ symbol: 'SOLUSDT', interval: '5m' })
     const saved = JSON.parse(localStorage.getItem('pavio:settings') ?? '{}')
-    expect(saved.state).toEqual({ symbol: 'SOLUSDT', interval: '5m', theme: 'system' })
+    expect(saved.state).toEqual({
+      symbol: 'SOLUSDT',
+      interval: '5m',
+      theme: 'system',
+      logScale: {},
+    })
+  })
+
+  it('guarda a escala log por par', () => {
+    useSettingsStore.getState().setLogScale('BTCUSDT', false)
+    useSettingsStore.getState().setLogScale('ETHUSDT', true)
+    expect(useSettingsStore.getState().logScale).toEqual({ BTCUSDT: false, ETHUSDT: true })
+  })
+})
+
+describe('escala log', () => {
+  it('ligada por padrão só nos pares de BTC', () => {
+    expect(defaultLogScale('BTCUSDT')).toBe(true)
+    expect(defaultLogScale('ETHBTC')).toBe(false)
+    expect(defaultLogScale('SOLUSDT')).toBe(false)
+  })
+
+  it('descarta escolhas inválidas vindas do localStorage', () => {
+    expect(sanitizeSettings({ logScale: { BTCUSDT: false, eth: true, SOLUSDT: 'sim' } })).toEqual({
+      logScale: { BTCUSDT: false },
+    })
+    expect(sanitizeSettings({ logScale: 'sim' })).toEqual({})
   })
 })

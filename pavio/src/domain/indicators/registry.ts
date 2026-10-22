@@ -1,5 +1,13 @@
 import type { Candle } from '../types'
 import { bollinger, ema, macd, rsi, sma, type Series } from './math'
+import {
+  readBollinger,
+  readMacd,
+  readOscillator,
+  readPriceVsLine,
+  valueAt,
+  type Reading,
+} from './readings'
 import { PRICE_SOURCES, isPriceSource, sourceValues, type PriceSource } from './source'
 
 export type IndicatorType = 'ema' | 'sma' | 'bb' | 'rsi' | 'macd'
@@ -32,11 +40,43 @@ export interface OutputDef {
   colorParam?: string
 }
 
+/** Pacotes temáticos em que os indicadores aparecem no menu. */
+export type IndicatorPack = 'cycle' | 'macro' | 'general'
+
+export const PACKS: readonly { id: IndicatorPack; name: string; description: string }[] = [
+  {
+    id: 'cycle',
+    name: 'Ciclo & On-chain',
+    description: 'Médias de ciclo, osciladores e dados da rede do Bitcoin.',
+  },
+  {
+    id: 'macro',
+    name: 'Macro & Liquidez',
+    description: 'Liquidez global, juros, inflação e condições financeiras.',
+  },
+  { id: 'general', name: 'Gerais', description: 'Médias e osciladores clássicos.' },
+]
+
+/** Dados para a leitura do indicador num candle (normalmente o atual). */
+export interface ReadingContext {
+  candles: readonly Candle[]
+  outputs: Record<string, Series>
+  params: IndicatorParams
+  index: number
+  /** Casas decimais de preço do par. */
+  precision: number
+}
+
 export interface IndicatorDef {
   type: IndicatorType
   name: string
   short: string
   description: string
+  pack: IndicatorPack
+  /** Texto curto exibido ao tocar no nome: o que é e como costuma ser lido. */
+  about: { what: string; howToRead: string }
+  /** Leitura do candle (valor, zona e contexto) ou null quando falta dado. */
+  read: (ctx: ReadingContext) => Reading | null
   /** `overlay` desenha sobre os candles; `pane` cria um painel próprio abaixo. */
   placement: 'overlay' | 'pane'
   params: ParamDef[]
@@ -51,12 +91,26 @@ export interface IndicatorDef {
 const num = (params: IndicatorParams, key: string) => params[key] as number
 const src = (params: IndicatorParams) => params.source as PriceSource
 
+function readMovingAverage(ctx: ReadingContext, short: string): Reading | null {
+  const line = valueAt(ctx.outputs.value, ctx.index)
+  const close = ctx.candles[ctx.index]?.close
+  if (line === null || close === undefined || line === 0) return null
+  return readPriceVsLine(close, line, `${short} ${num(ctx.params, 'period')}`, ctx.precision)
+}
+
 export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
   ema: {
     type: 'ema',
     name: 'Média Móvel Exponencial',
     short: 'MME',
     description: 'Média que dá mais peso aos preços recentes.',
+    pack: 'general',
+    about: {
+      what: 'Média dos preços que dá mais peso aos mais recentes, por isso reage mais rápido que a média simples.',
+      howToRead:
+        'Preço acima da média indica tendência de alta no período; abaixo, de baixa. A média também costuma servir de suporte ou resistência.',
+    },
+    read: (ctx) => readMovingAverage(ctx, 'MME'),
     placement: 'overlay',
     params: [
       { key: 'period', label: 'Período', kind: 'int', min: 1, max: 500, default: 21 },
@@ -71,6 +125,13 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
     name: 'Média Móvel Simples',
     short: 'MMS',
     description: 'Média aritmética dos últimos N preços.',
+    pack: 'general',
+    about: {
+      what: 'Média aritmética dos últimos N preços de fechamento.',
+      howToRead:
+        'Médias longas mostram a tendência principal: preço acima delas costuma marcar mercado de alta, e abaixo, de baixa. Também funcionam como suporte ou resistência.',
+    },
+    read: (ctx) => readMovingAverage(ctx, 'MMS'),
     placement: 'overlay',
     params: [
       { key: 'period', label: 'Período', kind: 'int', min: 1, max: 500, default: 50 },
@@ -85,6 +146,19 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
     name: 'Bandas de Bollinger',
     short: 'BB',
     description: 'Média simples com bandas de desvio padrão acima e abaixo.',
+    pack: 'cycle',
+    about: {
+      what: 'Média simples de 20 períodos com bandas a 2 desvios padrão acima e abaixo (padrão do TradingView).',
+      howToRead:
+        'As bandas se afastam quando a volatilidade sobe e se estreitam quando cai. Bandas estreitando costumam anteceder um evento de volatilidade grande, sem indicar a direção.',
+    },
+    read: (ctx) => {
+      const close = ctx.candles[ctx.index]?.close
+      if (close === undefined) return null
+      const { upper, middle, lower } = ctx.outputs
+      if (!upper || !middle || !lower) return null
+      return readBollinger(close, upper, middle, lower, ctx.index)
+    },
     placement: 'overlay',
     params: [
       { key: 'period', label: 'Período', kind: 'int', min: 2, max: 500, default: 20 },
@@ -120,6 +194,17 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
     name: 'Índice de Força Relativa',
     short: 'IFR',
     description: 'Oscilador de momento de 0 a 100 (RSI).',
+    pack: 'cycle',
+    about: {
+      what: 'Oscilador de 0 a 100 que compara a força das altas com a das baixas recentes (14 períodos, padrão do TradingView).',
+      howToRead:
+        'Acima de 70, o ativo é considerado sobrecomprado; abaixo de 30, sobrevendido. Divergência entre o IFR e o preço pode antecipar mudança de direção.',
+    },
+    read: (ctx) => {
+      const value = valueAt(ctx.outputs.value, ctx.index)
+      if (value === null) return null
+      return readOscillator(value, num(ctx.params, 'lowerLevel'), num(ctx.params, 'upperLevel'))
+    },
     placement: 'pane',
     params: [
       { key: 'period', label: 'Período', kind: 'int', min: 2, max: 200, default: 14 },
@@ -137,6 +222,17 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
     name: 'MACD',
     short: 'MACD',
     description: 'Convergência/divergência de médias móveis exponenciais.',
+    pack: 'general',
+    about: {
+      what: 'Diferença entre duas médias exponenciais (12 e 26) e a média de 9 dessa diferença (linha de sinal).',
+      howToRead:
+        'MACD acima da linha de sinal indica momento de alta ganhando força; abaixo, de baixa. Acima de zero, a média curta está acima da longa.',
+    },
+    read: (ctx) => {
+      const m = valueAt(ctx.outputs.macd, ctx.index)
+      const s = valueAt(ctx.outputs.signal, ctx.index)
+      return m === null || s === null ? null : readMacd(m, s)
+    },
     placement: 'pane',
     params: [
       { key: 'fast', label: 'MME rápida', kind: 'int', min: 1, max: 200, default: 12 },
@@ -251,6 +347,18 @@ export interface IndicatorConfig {
 export interface IndicatorResult {
   config: IndicatorConfig
   outputs: Record<string, Series>
+}
+
+/** Leitura de um indicador calculado no candle `index` (padrão: o último). */
+export function readIndicator(
+  result: IndicatorResult,
+  candles: readonly Candle[],
+  precision: number,
+  index = candles.length - 1,
+): Reading | null {
+  if (index < 0 || index >= candles.length) return null
+  const { config, outputs } = result
+  return INDICATORS[config.type].read({ candles, outputs, params: config.params, index, precision })
 }
 
 export function computeIndicator(
