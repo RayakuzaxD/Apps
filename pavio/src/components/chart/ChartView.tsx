@@ -11,6 +11,7 @@ import { usePaneTops } from '../../hooks/usePaneTops'
 import { describeLoadError } from '../../services/binance'
 import { useDrawingsStore } from '../../store/drawingsStore'
 import { useIndicatorsStore } from '../../store/indicatorsStore'
+import { useResolvedTheme } from '../../theme/theme'
 import { IndicatorLegendRow } from '../indicators/IndicatorLegendRow'
 import { IndicatorSettingsDialog } from '../indicators/IndicatorSettingsDialog'
 import { ChartLegend } from './ChartLegend'
@@ -28,6 +29,7 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const { candles, status, error, retry } = useKlines(symbol, interval)
+  const resolvedTheme = useResolvedTheme()
 
   const configs = useIndicatorsStore((s) => s.indicators)
   const updateIndicator = useIndicatorsStore((s) => s.update)
@@ -45,19 +47,19 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
     const ctl = new ChartController(el, readChartTheme())
     const offCrosshair = ctl.onCrosshair(setHoveredIndex)
 
-    // Acompanha a troca de tema do sistema (o seletor manual chega na etapa 6).
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const onSchemeChange = () => ctl.applyTheme(readChartTheme())
-    media.addEventListener('change', onSchemeChange)
-
     setController(ctl)
     return () => {
-      media.removeEventListener('change', onSchemeChange)
       offCrosshair()
       ctl.destroy()
       setController(null)
     }
   }, [])
+
+  // Tema efetivo mudou (preferência ou sistema): relê as cores dos tokens CSS.
+  // O atributo data-theme já foi aplicado de forma síncrona (theme/theme.ts).
+  useEffect(() => {
+    controller?.applyTheme(readChartTheme())
+  }, [controller, resolvedTheme])
 
   // Precisa rodar antes de usePaneTops: é aqui que os painéis são criados.
   useEffect(() => {

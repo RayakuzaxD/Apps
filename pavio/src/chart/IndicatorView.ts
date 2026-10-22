@@ -64,6 +64,14 @@ export class IndicatorView {
       panes[0]?.setStretchFactor(MAIN_PANE_STRETCH)
       panes[paneIndex]?.setStretchFactor(INDICATOR_PANE_STRETCH)
     }
+    if (def.range) {
+      // Escala fixa (ex.: IFR 0–100): margens pequenas, senão o eixo mostra valores fora da faixa.
+      this.series
+        .values()
+        .next()
+        .value?.priceScale()
+        .applyOptions({ scaleMargins: { top: 0.06, bottom: 0.06 } })
+    }
     this.applyStyle()
   }
 

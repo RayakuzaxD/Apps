@@ -110,6 +110,7 @@ export class ChartController {
         background: { type: ColorType.Solid, color: theme.background },
         textColor: theme.text,
         fontFamily: theme.fontFamily,
+        panes: { separatorColor: theme.border, separatorHoverColor: theme.grid },
       },
       grid: {
         vertLines: { color: theme.grid },

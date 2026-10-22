@@ -6,6 +6,7 @@ import { DrawingToolbar } from '../components/drawings/DrawingToolbar'
 import { IndicatorMenu } from '../components/indicators/IndicatorMenu'
 import { ConnectionBadge } from '../components/toolbar/ConnectionBadge'
 import { SymbolPicker } from '../components/toolbar/SymbolPicker'
+import { ThemeMenu } from '../components/toolbar/ThemeMenu'
 import { TimeframeSelect } from '../components/toolbar/TimeframeSelect'
 import toolbarStyles from '../components/toolbar/Toolbar.module.css'
 import { WatchlistPanel } from '../components/watchlist/WatchlistPanel'
@@ -20,6 +21,8 @@ export function App() {
   const interval = useSettingsStore((s) => s.interval)
   const setSymbol = useSettingsStore((s) => s.setSymbol)
   const setInterval = useSettingsStore((s) => s.setInterval)
+  const theme = useSettingsStore((s) => s.theme)
+  const setTheme = useSettingsStore((s) => s.setTheme)
   const indicatorCount = useIndicatorsStore((s) => s.indicators.length)
   const addIndicator = useIndicatorsStore((s) => s.add)
   const tool = useDrawingsStore((s) => s.tool)
@@ -43,6 +46,7 @@ export function App() {
         <IndicatorMenu count={indicatorCount} max={MAX_INDICATORS} onAdd={addIndicator} />
         <div className={styles.spacer} />
         <ConnectionBadge />
+        <ThemeMenu value={theme} onChange={setTheme} />
         <button
           type="button"
           className={toolbarStyles.button}

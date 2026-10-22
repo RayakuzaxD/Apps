@@ -286,3 +286,36 @@ describe('ChartController: indicadores', () => {
     expect(rsiSeries!.removePriceLine).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('ChartController: troca de tema', () => {
+  beforeEach(() => {
+    fake.series = []
+    fake.panes = []
+  })
+
+  it('recolore o histograma do MACD e as linhas de nível do IFR', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const candles = Array.from({ length: 60 }, (_, i) =>
+      c(86_400 * (i + 1), 10 + Math.sin(i), 10 + Math.cos(i), 5),
+    )
+    const results = (['macd', 'rsi'] as const).map((type) =>
+      computeIndicator({ id: type, type, params: defaultParams(type), visible: true }, candles),
+    )
+    ctl.setData('X:1d', '1d', candles, results)
+    const histogram = fake.series.find((s) => s.kind === 'Histogram' && s.pane.index === 1)!
+    const rsiLine = fake.series.find((s) => s.pane.index === 2)!
+
+    ctl.applyTheme({ ...theme, up: '#0000ff', down: '#00ffff', text: '#123123' })
+    const points = histogram.setData.mock.lastCall![0] as { value?: number; color?: string }[]
+    const colored = points.filter((p) => p.value !== undefined)
+    expect(colored.length).toBeGreaterThan(0)
+    for (const p of colored) {
+      expect(p.color).toBe(p.value! >= 0 ? '#0000ff99' : '#00ffff99')
+    }
+    const lastLevels = rsiLine.createPriceLine.mock.calls.slice(-2)
+    expect(lastLevels.map((call) => (call[0] as { color: string }).color)).toEqual([
+      '#123123',
+      '#123123',
+    ])
+  })
+})

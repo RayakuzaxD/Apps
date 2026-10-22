@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Pavio: análise gráfica open source" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // Aplica o tema salvo antes de carregar o app, evitando piscar no tema errado.
+      try {
+        var saved = JSON.parse(localStorage.getItem('pavio:settings') || '{}').state
+        if (saved && (saved.theme === 'light' || saved.theme === 'dark')) {
+          document.documentElement.dataset.theme = saved.theme
+        }
+      } catch (e) {}
+    </script>
     <title>Pavio</title>
   </head>
   <body>

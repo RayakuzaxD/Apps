@@ -51,7 +51,7 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
 - [x] 3. Indicadores: MME, MMS, RSI, MACD, Bandas de Bollinger
 - [x] 4. Desenho: linha de tendência, linha horizontal, Fibonacci
 - [x] 5. Watchlist em tempo real
-- [ ] 6. Tema claro/escuro
+- [x] 6. Tema claro/escuro
 
 ## Como funciona
 
@@ -82,6 +82,10 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
   app só vê uma falha de rede. Nesse caso o app consulta a lista de pares
   (`/api/v3/ticker/price`) para dizer se o par não existe ou se é problema de
   conexão.
+- **Tema:** automático (segue o sistema), claro ou escuro, escolhido no
+  cabeçalho e salvo no `localStorage`. As cores são variáveis CSS
+  (`src/styles/tokens.css`) lidas também pelo gráfico; um script inline no
+  `index.html` aplica o tema salvo antes do app carregar, para não piscar.
 - **Horário:** candles intradiários são exibidos no fuso local do navegador;
   candles diários seguem o dia UTC da Binance.
 - **Preferências:** par e timeframe ficam salvos no `localStorage`.

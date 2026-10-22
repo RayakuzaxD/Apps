@@ -125,3 +125,38 @@
 .dot[data-status='reconnecting'] {
   background: var(--brand);
 }
+
+.popoverRight {
+  right: 0;
+  left: auto;
+  width: 220px;
+  padding: var(--space-1);
+}
+
+.menuOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuOption:hover {
+  background: var(--surface-2);
+}
+
+.menuOption:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.check {
+  margin-left: auto;
+  color: var(--brand);
+}

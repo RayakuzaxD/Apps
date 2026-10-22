@@ -9,6 +9,11 @@ describe('sanitizeSettings', () => {
     })
   })
 
+  it('aceita o tema e descarta tema inválido', () => {
+    expect(sanitizeSettings({ theme: 'dark' })).toEqual({ theme: 'dark' })
+    expect(sanitizeSettings({ theme: 'sepia' })).toEqual({})
+  })
+
   it('descarta valores inválidos', () => {
     expect(sanitizeSettings({ symbol: 'eth', interval: '3h' })).toEqual({})
     expect(sanitizeSettings('lixo')).toEqual({})
@@ -22,6 +27,6 @@ describe('useSettingsStore', () => {
     useSettingsStore.getState().setInterval('5m')
     expect(useSettingsStore.getState()).toMatchObject({ symbol: 'SOLUSDT', interval: '5m' })
     const saved = JSON.parse(localStorage.getItem('pavio:settings') ?? '{}')
-    expect(saved.state).toEqual({ symbol: 'SOLUSDT', interval: '5m' })
+    expect(saved.state).toEqual({ symbol: 'SOLUSDT', interval: '5m', theme: 'system' })
   })
 })
