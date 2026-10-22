@@ -46,12 +46,22 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
 ## Roadmap do MVP
 
 - [x] 0. Estrutura do projeto, ferramentas e licenças
-- [ ] 1. Candles com troca de par e timeframe
+- [x] 1. Candles com troca de par e timeframe
 - [ ] 2. Volume
 - [ ] 3. Indicadores: MME, MMS, RSI, MACD, Bandas de Bollinger
 - [ ] 4. Desenho: linha de tendência, linha horizontal, Fibonacci
 - [ ] 5. Watchlist em tempo real
 - [ ] 6. Tema claro/escuro
+
+## Como funciona
+
+- **Histórico:** até 1000 candles via `GET /api/v3/klines`.
+- **Tempo real:** uma única conexão WebSocket combinada (`/stream`), com
+  inscrições em lote (`SUBSCRIBE`/`UNSUBSCRIBE`) e reconexão com backoff
+  exponencial. Após reconectar, o histórico é recarregado para cobrir lacunas.
+- **Horário:** candles intradiários são exibidos no fuso local do navegador;
+  candles diários seguem o dia UTC da Binance.
+- **Preferências:** par e timeframe ficam salvos no `localStorage`.
 
 ## Licença e atribuição
 
