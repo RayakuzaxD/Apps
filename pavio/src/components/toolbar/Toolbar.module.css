@@ -160,3 +160,19 @@
   margin-left: auto;
   color: var(--brand);
 }
+
+/* Celular: botões de tempo mais estreitos e "Ao vivo" só com o ponto. */
+@media (max-width: 600px) {
+  .group .button {
+    padding: 0 6px;
+  }
+
+  .badgeLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

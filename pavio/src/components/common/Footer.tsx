@@ -14,7 +14,7 @@ export function Footer() {
         </a>{' '}
         · Copyright (c) 2025 TradingView, Inc.
       </span>
-      <span>Dados de mercado: Binance</span>
+      <span>Dados de mercado: Binance · BTC antes de 2017: Bitstamp</span>
     </footer>
   )
 }

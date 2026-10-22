@@ -9,6 +9,9 @@ const INTERVAL_MS: Record<string, number> = {
   '1h': 3_600_000,
   '4h': 14_400_000,
   '1d': 86_400_000,
+  '1w': 604_800_000,
+  // O mock usa meses de 30 dias; a Binance usa o mês do calendário.
+  '1M': 2_592_000_000,
 }
 
 const START_PRICE: Record<string, number> = { BTCUSDT: 60_000, ETHUSDT: 3_000, SOLUSDT: 150 }
@@ -61,10 +64,31 @@ function pageOf(rows: (string | number)[][], url: URL) {
 export interface MockOptions {
   /** Total de candles disponíveis por série (padrão: `KLINE_COUNT`). */
   historyTotal?: number
+  /** Candles diários de BTC/USD da Bitstamp (padrão: nenhum). */
+  bitstampDaily?: (string | number)[][]
+}
+
+/** Linhas da Bitstamp (`end` inclusivo, os `limit` mais recentes), como a API real. */
+function bitstampPage(rows: (string | number)[][], url: URL) {
+  const end = Number(url.searchParams.get('end'))
+  const limit = Number(url.searchParams.get('limit') ?? 1000)
+  return rows
+    .filter((r) => Number(r[0]) / 1000 <= end)
+    .slice(-limit)
+    .map((r) => ({
+      timestamp: String(Number(r[0]) / 1000),
+      open: String(r[1]),
+      high: String(r[2]),
+      low: String(r[3]),
+      close: String(r[4]),
+      volume: String(r[5]),
+    }))
 }
 
 export interface BinanceMock {
   klineRequests: { symbol: string; interval: string; endTime?: number }[]
+  /** Valores de `end` (segundos) dos pedidos à Bitstamp. */
+  bitstampRequests: number[]
   wsMessages: { method: string; params: string[] }[]
   tickerRequests: string[]
   ws: () => WebSocketRoute
@@ -86,6 +110,7 @@ export async function mockBinance(page: Page, options: MockOptions = {}): Promis
   const klineRequests: BinanceMock['klineRequests'] = []
   const wsMessages: BinanceMock['wsMessages'] = []
   const tickerRequests: string[] = []
+  const bitstampRequests: number[] = []
   let socket: WebSocketRoute | null = null
 
   await page.route('**/api/v3/klines?**', async (route) => {
@@ -104,6 +129,16 @@ export async function mockBinance(page: Page, options: MockOptions = {}): Promis
       ? deepKlines(symbol, interval, options.historyTotal)
       : fixtureKlines(symbol, interval)
     await route.fulfill({ json: pageOf(rows, url) })
+  })
+
+  await page.route('**/api/v2/ohlc/btcusd/**', async (route) => {
+    const url = new URL(route.request().url())
+    bitstampRequests.push(Number(url.searchParams.get('end')))
+    const ohlc = bitstampPage(options.bitstampDaily ?? [], url)
+    await route.fulfill({
+      json: { data: { pair: 'BTC/USD', ohlc } },
+      headers: { 'access-control-allow-origin': '*' },
+    })
   })
 
   await page.route('**/api/v3/ticker/24hr?**', async (route) => {
@@ -141,6 +176,7 @@ export async function mockBinance(page: Page, options: MockOptions = {}): Promis
 
   return {
     klineRequests,
+    bitstampRequests,
     wsMessages,
     tickerRequests,
     ws: () => {

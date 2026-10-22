@@ -7,10 +7,8 @@ export const MAX_WATCHLIST = 50
 
 export interface WatchlistState {
   symbols: string[]
-  open: boolean
   add: (symbol: string) => boolean
   remove: (symbol: string) => void
-  setOpen: (open: boolean) => void
 }
 
 /** Valida o que vem do localStorage: formato, duplicados e limite. */
@@ -26,7 +24,6 @@ export const useWatchlistStore = create<WatchlistState>()(
   persist(
     (set, get) => ({
       symbols: DEFAULT_WATCHLIST,
-      open: true,
       add: (symbol) => {
         const { symbols } = get()
         if (!isValidSymbol(symbol) || symbols.includes(symbol) || symbols.length >= MAX_WATCHLIST) {
@@ -36,19 +33,17 @@ export const useWatchlistStore = create<WatchlistState>()(
         return true
       },
       remove: (symbol) => set((s) => ({ symbols: s.symbols.filter((x) => x !== symbol) })),
-      setOpen: (open) => set({ open }),
     }),
     {
       name: 'pavio:watchlist',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ symbols, open }) => ({ symbols, open }),
+      partialize: ({ symbols }) => ({ symbols }),
       merge: (persisted, current) => {
-        const p = (persisted ?? {}) as { symbols?: unknown; open?: unknown }
+        const p = (persisted ?? {}) as { symbols?: unknown }
         return {
           ...current,
           symbols: p.symbols === undefined ? current.symbols : sanitizeWatchlist(p.symbols),
-          open: typeof p.open === 'boolean' ? p.open : current.open,
         }
       },
     },

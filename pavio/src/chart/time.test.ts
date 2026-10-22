@@ -19,10 +19,11 @@ describe('formatTickMark', () => {
 
 describe('formatCrosshairTime', () => {
   it('mostra data e hora em intervalos intradiários', () => {
-    expect(formatCrosshairTime(t, true)).toBe('qui 22 out 26  14:35')
+    expect(formatCrosshairTime(t, 'intraday')).toBe('qui 22 out 26  14:35')
   })
   it('mostra só a data no diário', () => {
-    expect(formatCrosshairTime(t, false)).toBe('qui 22 out 26')
+    expect(formatCrosshairTime(t, 'day')).toBe('qui 22 out 26')
+    expect(formatCrosshairTime(t, 'month')).toBe('out 2026')
   })
 })
 

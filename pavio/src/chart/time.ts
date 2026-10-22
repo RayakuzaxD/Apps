@@ -1,4 +1,5 @@
 import { TickMarkType } from 'lightweight-charts'
+import type { TimeDetail } from '../domain/intervals'
 
 /**
  * O Lightweight Charts trabalha em UTC. Para exibir o horário local, os
@@ -49,8 +50,9 @@ export function formatTickMark(time: number, type: TickMarkType): string {
 }
 
 /** Rótulo do crosshair (recebe tempos já deslocados). */
-export function formatCrosshairTime(time: number, intraday: boolean): string {
+export function formatCrosshairTime(time: number, detail: TimeDetail): string {
   const p = parts(time)
+  if (detail === 'month') return `${MONTHS[p.month]} ${p.year}`
   const date = `${WEEKDAYS[p.weekday]} ${pad(p.day)} ${MONTHS[p.month]} ${String(p.year).slice(2)}`
-  return intraday ? `${date}  ${pad(p.hours)}:${pad(p.minutes)}` : date
+  return detail === 'intraday' ? `${date}  ${pad(p.hours)}:${pad(p.minutes)}` : date
 }

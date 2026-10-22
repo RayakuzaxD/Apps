@@ -13,7 +13,11 @@ it('marca o intervalo atual e troca ao clicar', async () => {
     '1h',
     '4h',
     '1D',
+    '1S',
+    '1M',
   ])
+  expect(screen.getByRole('button', { name: '1M' })).toHaveAttribute('title', '1 mês')
+  expect(screen.getByRole('button', { name: '1m' })).toHaveAttribute('title', '1 minuto')
   expect(screen.getByRole('button', { name: '1h' })).toHaveAttribute('aria-pressed', 'true')
   await userEvent.click(screen.getByRole('button', { name: '1D' }))
   expect(onChange).toHaveBeenCalledWith('1d')

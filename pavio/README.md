@@ -1,7 +1,10 @@
 # Pavio
 
-App web open source de análise gráfica para criptoativos: candles, volume,
-indicadores, ferramentas de desenho e watchlist em tempo real.
+App web open source de análise gráfica para criptoativos, inspirado no
+TradingView e focado em Bitcoin: candles do minuto ao mensal, escala log,
+indicadores em pacotes temáticos com explicação e leitura do dia, ferramentas
+de desenho e watchlist em tempo real. Mostra fatos e zonas, nunca
+recomendação de compra ou venda.
 
 **Demo:** https://rayakuzaxd.github.io/Apps/
 
@@ -13,6 +16,7 @@ indicadores, ferramentas de desenho e watchlist em tempo real.
 - [Lightweight Charts™](https://github.com/tradingview/lightweight-charts) 5 (Apache-2.0)
 - Zustand para estado (persistido em `localStorage`)
 - Dados: API pública da Binance (REST para histórico, WebSocket para tempo real)
+  e da Bitstamp (BTC/USD antes de 2017)
 - Testes: Vitest + Testing Library (unidade/componentes) e Playwright (e2e)
 
 ## Rodando localmente
@@ -64,8 +68,28 @@ fonte.
 - [x] 5. Watchlist em tempo real
 - [x] 6. Tema claro/escuro
 
+## Roadmap: ciclo e macro
+
+- [x] 1a. Base: 1S e 1M, escala log, BTC desde 2011, pacotes de indicadores
+      com explicação, tabela de zonas, painel "Leitura do dia" e layout de celular
+- [ ] 1b. Dados diários (FRED, CoinMetrics), Faixa de Bull Market, médias de
+      50/200 semanas, MVRV, GLI e NFCI
+- [ ] 2. Restante do pacote Ciclo & On-chain
+- [ ] 3. Pacote Macro & Liquidez
+- [ ] 4. Desenhos: retângulo, texto e fases de Wyckoff
+
 ## Como funciona
 
+- **Tempos gráficos:** de 1 minuto a 1 mês. **1S** é a semana do calendário da
+  Binance (abre segunda 00:00 UTC, domingo 21h de Brasília) e **1M** o mês do
+  calendário; a última vela é a semana/mês em formação, como no TradingView.
+- **BTC desde 2011:** o BTC/USDT da Binance começa em ago/2017. Em 1D, 1S e 1M,
+  quando a Binance acaba, o app completa com o BTC/USD diário da Bitstamp
+  (desde ago/2011), agregado em semanas e meses do calendário. A primeira
+  semana/mês da Binance (parcial) é mantida no lugar da equivalente da Bitstamp.
+- **Escala log:** botão `log` no canto do gráfico; ligada por padrão nos pares
+  de BTC e lembrada por par. Os painéis próprios (IFR, MACD) ficam sempre em
+  escala linear.
 - **Histórico:** 1000 candles via `GET /api/v3/klines` ao abrir o par. Ao rolar
   para a esquerda até perto do primeiro candle (50 barras), o app busca os 1000
   anteriores (`endTime`) e os junta ao início sem mexer no zoom nem na posição.
@@ -78,6 +102,18 @@ fonte.
   exponencial. Após reconectar, o histórico é recarregado para cobrir lacunas.
 - **Volume:** histograma sobreposto nos 20% inferiores do gráfico, em escala
   própria, com a cor do candle (alta/baixa) translúcida.
+- **Pacotes de indicadores:** o menu agrupa os indicadores em **Ciclo &
+  On-chain**, **Macro & Liquidez** e **Gerais**. Tocar no nome de um
+  indicador na legenda mostra "o que é / como ler".
+- **Leitura do dia:** painel lateral (aba ao lado da watchlist) com o preço e,
+  para cada indicador ligado, o valor da vela atual e a zona em que está
+  (fundo/meio/topo, acima/abaixo…), com o contexto da zona. Diz se a vela está
+  em formação ou fechada. Sem dado suficiente, mostra "sem dado". As leituras
+  são funções puras em `src/domain/indicators/readings.ts`, e todo corte que
+  não é parâmetro do indicador fica na tabela `src/domain/indicators/zones.ts`.
+  Um teste garante que nenhum texto recomenda comprar ou vender.
+- **Celular:** cabeçalho em duas linhas, sem rolagem lateral; o painel lateral
+  começa fechado e flutua sobre o gráfico.
 - **Indicadores:** MME, MMS e Bandas de Bollinger sobre os candles; IFR (RSI)
   e MACD em painéis próprios. Cada instância tem período, fonte de preço e
   cores editáveis e fica salva no `localStorage`. Os cálculos ficam em
@@ -93,7 +129,7 @@ fonte.
 - **Watchlist:** preço e variação de 24h de cada par, com snapshot inicial via
   `/api/v3/ticker/24hr` (um pedido por par, para que um par inválido não afete
   os outros) e tempo real pelo stream `@miniTicker`, em lotes de 200 ms. Clicar
-  num par abre o gráfico. A lista e a visibilidade do painel ficam salvas.
+  num par abre o gráfico. A lista, a aba e a visibilidade do painel ficam salvas.
 - **Erros da Binance e CORS:** as respostas de erro da Binance (ex.: 400
   "Invalid symbol") vêm sem cabeçalhos CORS, então o navegador as bloqueia e o
   app só vê uma falha de rede. Nesse caso o app consulta a lista de pares

@@ -67,6 +67,16 @@ describe('IndicatorLegendRow', () => {
     expect(handlers.onRemove).toHaveBeenCalledWith('m')
   })
 
+  it('tocar no nome abre o que é e como ler; Esc fecha', async () => {
+    setup(macd, 2)
+    await userEvent.click(screen.getByRole('button', { name: 'MACD 12 26 9' }))
+    const info = screen.getByRole('dialog', { name: 'MACD' })
+    expect(info).toHaveTextContent('O que é: Diferença entre duas médias exponenciais')
+    expect(info).toHaveTextContent('Como ler: MACD acima da linha de sinal')
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('indicador oculto oferece mostrar', () => {
     setup({ ...macd, config: { ...macd.config, visible: false } }, 2)
     expect(screen.getByRole('button', { name: 'Mostrar MACD 12 26 9' })).toHaveAttribute(

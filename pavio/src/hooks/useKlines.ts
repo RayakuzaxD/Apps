@@ -2,20 +2,19 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { mergeCandle, mergeCandles, prependCandles } from '../domain/candles'
 import type { Candle, IntervalId } from '../domain/types'
 import {
-  KLINES_PAGE_SIZE,
   explainLoadError,
-  fetchKlines,
   getBinanceStream,
   isAbortError,
   klineStreamName,
   parseKlineEvent,
 } from '../services/binance'
+import { fetchHistoryPage } from '../services/history'
 
 export type KlinesStatus = 'loading' | 'ready' | 'error'
 
 /**
  * Situação do histórico anterior: `idle` pode carregar mais, `end` chegou ao
- * início do par na Binance e `limit` atingiu o máximo de candles mantidos.
+ * início do histórico disponível e `limit` atingiu o máximo de candles mantidos.
  */
 export type OlderStatus = 'idle' | 'loading' | 'error' | 'end' | 'limit'
 
@@ -90,8 +89,9 @@ export function useKlines(symbol: string, interval: IntervalId): KlinesResult {
       buffer = []
       if (initial) setState({ key, candles: EMPTY, status: 'loading', error: null, older })
       try {
-        const history = await fetchKlines({ symbol, interval, signal: current.signal })
+        const page = await fetchHistoryPage({ symbol, interval, signal: current.signal })
         if (disposed || current.signal.aborted) return
+        const history = page.candles
         // Na recarga, mantém o histórico anterior se ele encosta no recarregado;
         // com lacuna (desconexão longa), recomeça só com o recarregado.
         const last = candles[candles.length - 1]
@@ -101,7 +101,7 @@ export function useKlines(symbol: string, interval: IntervalId): KlinesResult {
           candles = prependCandles(candles, history)
         } else {
           candles = history
-          older = history.length < KLINES_PAGE_SIZE ? 'end' : 'idle'
+          older = page.hasMore ? 'idle' : 'end'
         }
         candles = mergeCandles(candles, buffer ?? [])
         buffer = null
@@ -130,16 +130,15 @@ export function useKlines(symbol: string, interval: IntervalId): KlinesResult {
       olderController = current
       setOlder('loading')
       try {
-        const rows = await fetchKlines({
+        const page = await fetchHistoryPage({
           symbol,
           interval,
           endTime: first.time * 1000 - 1,
           signal: current.signal,
         })
         if (disposed || current.signal.aborted) return
-        candles = prependCandles(rows, candles)
-        older =
-          rows.length < KLINES_PAGE_SIZE ? 'end' : candles.length >= MAX_CANDLES ? 'limit' : 'idle'
+        candles = prependCandles(page.candles, candles)
+        older = !page.hasMore ? 'end' : candles.length >= MAX_CANDLES ? 'limit' : 'idle'
         setState((s) => (s.key === key ? { ...s, candles, older } : s))
       } catch (error) {
         if (disposed || isAbortError(error)) return

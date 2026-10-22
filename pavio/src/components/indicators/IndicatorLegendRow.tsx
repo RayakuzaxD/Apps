@@ -1,6 +1,7 @@
 import { Eye, EyeOff, Settings2, X } from 'lucide-react'
 import { formatPrice } from '../../domain/format'
 import { INDICATORS, indicatorLabel, type IndicatorResult } from '../../domain/indicators/registry'
+import { IndicatorInfo } from './IndicatorInfo'
 import styles from './Indicators.module.css'
 
 interface IndicatorLegendRowProps {
@@ -34,7 +35,7 @@ export function IndicatorLegendRow({
       data-testid={`indicator-${config.type}`}
       data-indicator-id={config.id}
     >
-      <span className={styles.name}>{label}</span>
+      <IndicatorInfo type={config.type} label={label} />
       <span className={styles.values}>
         {def.outputs.map((output) => {
           const value = index === null ? null : (outputs[output.key]?.[index] ?? null)

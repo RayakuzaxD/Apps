@@ -1,6 +1,11 @@
 import { ChartLine } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { INDICATORS, INDICATOR_TYPES, type IndicatorType } from '../../domain/indicators/registry'
+import {
+  INDICATORS,
+  INDICATOR_TYPES,
+  PACKS,
+  type IndicatorType,
+} from '../../domain/indicators/registry'
 import toolbar from '../toolbar/Toolbar.module.css'
 import styles from './Indicators.module.css'
 
@@ -41,30 +46,41 @@ export function IndicatorMenu({ count, max, onAdd }: IndicatorMenuProps) {
         onClick={() => setOpen((o) => !o)}
       >
         <ChartLine size={16} aria-hidden="true" />
-        Indicadores
+        <span className={styles.menuLabel}>Indicadores</span>
         {count > 0 && <span className={styles.count}>{count}</span>}
       </button>
       {open && (
         <div className={styles.menuPopover} role="menu" aria-label="Adicionar indicador">
-          {INDICATOR_TYPES.map((type) => {
-            const def = INDICATORS[type]
+          {PACKS.map((pack) => {
+            const types = INDICATOR_TYPES.filter((type) => INDICATORS[type].pack === pack.id)
+            if (types.length === 0) return null
             return (
-              <button
-                key={type}
-                type="button"
-                role="menuitem"
-                className={styles.menuItem}
-                disabled={full}
-                onClick={() => {
-                  onAdd(type)
-                  setOpen(false)
-                }}
-              >
-                <span className={styles.menuTitle}>
-                  {def.name} <span className={styles.menuShort}>({def.short})</span>
-                </span>
-                <span className={styles.menuDescription}>{def.description}</span>
-              </button>
+              <div key={pack.id} role="group" aria-label={pack.name} className={styles.menuGroup}>
+                <p className={styles.menuGroupTitle} aria-hidden="true">
+                  {pack.name}
+                </p>
+                {types.map((type) => {
+                  const def = INDICATORS[type]
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      role="menuitem"
+                      className={styles.menuItem}
+                      disabled={full}
+                      onClick={() => {
+                        onAdd(type)
+                        setOpen(false)
+                      }}
+                    >
+                      <span className={styles.menuTitle}>
+                        {def.name} <span className={styles.menuShort}>({def.short})</span>
+                      </span>
+                      <span className={styles.menuDescription}>{def.description}</span>
+                    </button>
+                  )
+                })}
+              </div>
             )
           })}
           {full && <p className={styles.menuNote}>Limite de {max} indicadores atingido.</p>}

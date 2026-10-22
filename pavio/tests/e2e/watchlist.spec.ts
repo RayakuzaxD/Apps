@@ -5,10 +5,23 @@ import { TICKERS, mockBinance } from './mockBinance'
 const row = (page: Page, symbol: string) => page.getByTestId(`watch-${symbol}`)
 
 test.describe('Etapa 5: watchlist', () => {
+  // O painel lateral abre na "Leitura do dia"; aqui começa na aba Watchlist
+  // (só na primeira carga, para os testes de persistência após recarregar).
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      if (!localStorage.getItem('pavio:panel')) {
+        localStorage.setItem(
+          'pavio:panel',
+          JSON.stringify({ state: { open: true, tab: 'watchlist' }, version: 1 }),
+        )
+      }
+    })
+  })
+
   test('lista padrão com preço e variação de 24h do snapshot', async ({ page }) => {
     const binance = await mockBinance(page)
     await page.goto('/')
-    const watchlist = page.getByRole('complementary', { name: 'Watchlist' })
+    const watchlist = page.getByRole('region', { name: 'Watchlist' })
     await expect(watchlist).toBeVisible()
     await expect(watchlist).toContainText('6 pares')
 
@@ -88,18 +101,18 @@ test.describe('Etapa 5: watchlist', () => {
     await page.reload()
     await expect(row(page, 'LINKUSDT')).toBeVisible()
     await expect(row(page, 'DOGEUSDT')).toHaveCount(0)
-    await expect(page.getByRole('complementary', { name: 'Watchlist' })).toContainText('6 pares')
+    await expect(page.getByRole('region', { name: 'Watchlist' })).toContainText('6 pares')
   })
 
   test('pode ser ocultada e reaberta (e lembra a escolha)', async ({ page }) => {
     await mockBinance(page)
     await page.goto('/')
-    await page.getByRole('button', { name: 'Ocultar watchlist' }).click()
-    await expect(page.getByRole('complementary', { name: 'Watchlist' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Ocultar painel' }).click()
+    await expect(page.getByRole('region', { name: 'Watchlist' })).toHaveCount(0)
     await page.reload()
     await expect(page.getByTestId('legend-F')).not.toBeEmpty()
-    await expect(page.getByRole('complementary', { name: 'Watchlist' })).toHaveCount(0)
-    await page.getByRole('button', { name: 'Mostrar watchlist' }).click()
+    await expect(page.getByRole('region', { name: 'Watchlist' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Mostrar painel' }).click()
     await expect(row(page, 'BTCUSDT').getByTestId('watch-price')).toHaveText('61.234,50')
   })
 })

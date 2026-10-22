@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChartController } from '../../chart/ChartController'
 import { readChartTheme } from '../../chart/theme'
 import { findCandleIndex, pricePrecision } from '../../domain/candles'
 import { DRAWING_LABELS } from '../../domain/drawings/types'
-import { INDICATORS, computeIndicator } from '../../domain/indicators/registry'
+import { INDICATORS, type IndicatorResult } from '../../domain/indicators/registry'
 import type { IntervalId } from '../../domain/types'
 import { useChartDrawings } from '../../hooks/useChartDrawings'
-import { useKlines, type OlderStatus } from '../../hooks/useKlines'
+import type { KlinesResult, OlderStatus } from '../../hooks/useKlines'
 import { usePaneTops } from '../../hooks/usePaneTops'
 import { describeLoadError } from '../../services/binance'
 import { useDrawingsStore } from '../../store/drawingsStore'
 import { useIndicatorsStore } from '../../store/indicatorsStore'
+import { defaultLogScale, useSettingsStore } from '../../store/settingsStore'
 import { useResolvedTheme } from '../../theme/theme'
 import { IndicatorLegendRow } from '../indicators/IndicatorLegendRow'
 import { IndicatorSettingsDialog } from '../indicators/IndicatorSettingsDialog'
@@ -20,9 +21,13 @@ import styles from './ChartView.module.css'
 interface ChartViewProps {
   symbol: string
   interval: IntervalId
+  /** Candles do par/intervalo (carregados no App, compartilhados com a leitura). */
+  klines: KlinesResult
+  /** Indicadores calculados sobre esses candles. */
+  results: IndicatorResult[]
 }
 
-export function ChartView({ symbol, interval }: ChartViewProps) {
+export function ChartView({ symbol, interval, klines, results }: ChartViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [controller, setController] = useState<ChartController | null>(null)
@@ -30,21 +35,15 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
   const [hoveredTime, setHoveredTime] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [leftEdgeVisible, setLeftEdgeVisible] = useState(false)
-  const { candles, status, error, retry, older, loadOlder, retryOlder } = useKlines(
-    symbol,
-    interval,
-  )
+  const { candles, status, error, retry, older, loadOlder, retryOlder } = klines
   const resolvedTheme = useResolvedTheme()
+  const logScale = useSettingsStore((s) => s.logScale[symbol] ?? defaultLogScale(symbol))
+  const setLogScale = useSettingsStore((s) => s.setLogScale)
 
   const configs = useIndicatorsStore((s) => s.indicators)
   const updateIndicator = useIndicatorsStore((s) => s.update)
   const toggleIndicator = useIndicatorsStore((s) => s.toggle)
   const removeIndicator = useIndicatorsStore((s) => s.remove)
-
-  const results = useMemo(
-    () => configs.map((config) => computeIndicator(config, candles)),
-    [configs, candles],
-  )
 
   useEffect(() => {
     const el = containerRef.current
@@ -69,6 +68,8 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
   }, [controller, resolvedTheme])
 
   useEffect(() => controller?.onNeedOlder(loadOlder), [controller, loadOlder])
+
+  useEffect(() => controller?.setLogScale(logScale), [controller, logScale])
 
   // Precisa rodar antes de usePaneTops: é aqui que os painéis são criados.
   useEffect(() => {
@@ -134,6 +135,18 @@ export function ChartView({ symbol, interval }: ChartViewProps) {
           · Esc cancela
         </div>
       )}
+      <button
+        type="button"
+        className={styles.scaleToggle}
+        aria-pressed={logScale}
+        title={
+          logScale ? 'Escala logarítmica (clique para linear)' : 'Escala linear (clique para log)'
+        }
+        onClick={() => setLogScale(symbol, !logScale)}
+        data-testid="log-scale"
+      >
+        log
+      </button>
       {status === 'ready' && (
         <OlderHistoryStatus older={older} edgeVisible={leftEdgeVisible} onRetry={retryOlder} />
       )}

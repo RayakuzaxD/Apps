@@ -4,6 +4,7 @@ import {
   CrosshairMode,
   HistogramSeries,
   LineStyle,
+  PriceScaleMode,
   createChart,
   type CandlestickData,
   type HistogramData,
@@ -17,7 +18,7 @@ import {
 import { pricePrecision } from '../domain/candles'
 import { formatPrice, formatVolume } from '../domain/format'
 import type { IndicatorResult } from '../domain/indicators/registry'
-import { getInterval, isIntraday } from '../domain/intervals'
+import { getInterval, isIntraday, timeDetail, type TimeDetail } from '../domain/intervals'
 import type { Candle, IntervalId } from '../domain/types'
 import { DrawingController, type DrawingCallbacks } from '../drawings/DrawingController'
 import { IndicatorView } from './IndicatorView'
@@ -59,6 +60,7 @@ export class ChartController {
   private candles: readonly Candle[] = []
   private timeOffset = 0
   private intraday = true
+  private detail: TimeDetail = 'intraday'
   private intervalSeconds = 3600
   private times: number[] = []
   private timesFor: readonly Candle[] | null = null
@@ -93,7 +95,7 @@ export class ChartController {
       },
       localization: {
         locale: 'pt-BR',
-        timeFormatter: (time: Time) => formatCrosshairTime(time as number, this.intraday),
+        timeFormatter: (time: Time) => formatCrosshairTime(time as number, this.detail),
         priceFormatter: (price: number) => formatPrice(price, this.precision),
       },
     })
@@ -202,6 +204,14 @@ export class ChartController {
     if (plan.kind === 'replace') this.checkLeftEdge(this.chart.timeScale().getVisibleLogicalRange())
   }
 
+  /** Escala de preço logarítmica (indicadores sobrepostos acompanham, pois usam a mesma escala). */
+  setLogScale(on: boolean) {
+    this.chart.priceScale('right', 0).applyOptions({
+      mode: on ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+    })
+    for (const view of this.indicatorViews.values()) view.keepLinearScale()
+  }
+
   /** Liga as ferramentas de desenho à série de candles deste gráfico. */
   createDrawingController(container: HTMLElement, callbacks: DrawingCallbacks): DrawingController {
     return new DrawingController(
@@ -291,6 +301,7 @@ export class ChartController {
 
   private configureInterval(interval: IntervalId) {
     this.intraday = isIntraday(interval)
+    this.detail = timeDetail(interval)
     this.intervalSeconds = getInterval(interval).seconds
     this.timeOffset = this.intraday ? localOffsetSeconds() : 0
     this.chart.applyOptions({ timeScale: { timeVisible: this.intraday } })

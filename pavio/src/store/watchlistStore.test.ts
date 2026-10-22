@@ -9,7 +9,7 @@ import {
 const store = () => useWatchlistStore.getState()
 
 describe('useWatchlistStore', () => {
-  beforeEach(() => useWatchlistStore.setState({ symbols: ['BTCUSDT'], open: true }))
+  beforeEach(() => useWatchlistStore.setState({ symbols: ['BTCUSDT'] }))
 
   it('começa com os pares padrão', () => {
     expect(DEFAULT_WATCHLIST).toContain('BTCUSDT')
@@ -30,13 +30,12 @@ describe('useWatchlistStore', () => {
     expect(store().add('NEWUSDT')).toBe(false)
   })
 
-  it('remove e alterna a visibilidade, persistindo', () => {
+  it('remove e persiste', () => {
     store().add('SOLUSDT')
     store().remove('BTCUSDT')
-    store().setOpen(false)
-    expect(store()).toMatchObject({ symbols: ['SOLUSDT'], open: false })
+    expect(store()).toMatchObject({ symbols: ['SOLUSDT'] })
     const saved = JSON.parse(localStorage.getItem('pavio:watchlist') ?? '{}')
-    expect(saved.state).toEqual({ symbols: ['SOLUSDT'], open: false })
+    expect(saved.state).toEqual({ symbols: ['SOLUSDT'] })
   })
 })
 

@@ -14,7 +14,7 @@ export function ConnectionBadge() {
   return (
     <span className={styles.badge} role="status" data-testid="connection-status">
       <span className={styles.dot} data-status={status} aria-hidden="true" />
-      {LABELS[status]}
+      <span className={styles.badgeLabel}>{LABELS[status]}</span>
     </span>
   )
 }

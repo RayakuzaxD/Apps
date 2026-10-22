@@ -2,6 +2,7 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
+  PriceScaleMode,
   type HistogramData,
   type IChartApi,
   type IPriceLine,
@@ -63,6 +64,7 @@ export class IndicatorView {
       const panes = ctx.chart.panes()
       panes[0]?.setStretchFactor(MAIN_PANE_STRETCH)
       panes[paneIndex]?.setStretchFactor(INDICATOR_PANE_STRETCH)
+      this.keepLinearScale()
     }
     if (def.range) {
       // Escala fixa (ex.: IFR 0–100): margens pequenas, senão o eixo mostra valores fora da faixa.
@@ -73,6 +75,15 @@ export class IndicatorView {
         .applyOptions({ scaleMargins: { top: 0.06, bottom: 0.06 } })
     }
     this.applyStyle()
+  }
+
+  /**
+   * Painéis próprios (IFR, MACD…) ficam sempre em escala linear, mesmo com o
+   * preço em log: a biblioteca leva o modo da escala principal aos painéis.
+   */
+  keepLinearScale() {
+    if (INDICATORS[this.config.type].placement !== 'pane') return
+    this.series.values().next().value?.priceScale().applyOptions({ mode: PriceScaleMode.Normal })
   }
 
   get id(): string {

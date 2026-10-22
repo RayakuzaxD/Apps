@@ -32,6 +32,37 @@
   flex: 1;
 }
 
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Celular: duas linhas — marca, par e ações em cima; tempos e indicadores embaixo. */
+@media (max-width: 600px) {
+  .header {
+    gap: var(--space-2);
+    padding: var(--space-2);
+  }
+
+  .brand {
+    display: none;
+  }
+
+  .brandBlock {
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .tools {
+    order: 10;
+    flex: 1 0 100%;
+    gap: var(--space-2);
+    justify-content: space-between;
+  }
+}
+
 .main {
   position: relative;
   display: grid;
