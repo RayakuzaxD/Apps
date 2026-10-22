@@ -18,6 +18,7 @@ it('mostra OHLC, variação e volume do candle', () => {
   expect(screen.getByTestId('legend-F')).toHaveTextContent('110,00')
   expect(screen.getByTestId('legend-change')).toHaveTextContent('+10,00%')
   expect(screen.getByTestId('legend-change')).toHaveAttribute('data-dir', 'up')
+  expect(screen.getByTestId('legend-volume')).toHaveTextContent(/1,5\smil/)
 })
 
 it('sem candle mostra só o título', () => {

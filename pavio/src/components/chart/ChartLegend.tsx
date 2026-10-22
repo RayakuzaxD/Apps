@@ -42,7 +42,7 @@ export function ChartLegend({ symbol, interval, candle }: ChartLegendProps) {
           </span>
           <span>
             <span className={styles.label}>Vol</span>
-            <span>{formatVolume(candle.volume)}</span>
+            <span data-testid="legend-volume">{formatVolume(candle.volume)}</span>
           </span>
         </>
       )}

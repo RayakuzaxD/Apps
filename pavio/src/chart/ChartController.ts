@@ -2,9 +2,11 @@ import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
+  HistogramSeries,
   LineStyle,
   createChart,
   type CandlestickData,
+  type HistogramData,
   type IChartApi,
   type ISeriesApi,
   type MouseEventParams,
@@ -12,12 +14,21 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { pricePrecision } from '../domain/candles'
-import { formatPrice } from '../domain/format'
+import { formatPrice, formatVolume } from '../domain/format'
 import { isIntraday } from '../domain/intervals'
 import type { Candle, IntervalId } from '../domain/types'
 import type { ChartTheme } from './theme'
 import { formatCrosshairTime, formatTickMark, localOffsetSeconds } from './time'
 import { planCandleUpdate } from './updatePlan'
+import {
+  CANDLE_SCALE_MARGINS,
+  VOLUME_SCALE_MARGINS,
+  volumeColor,
+  volumeColors,
+  type VolumeColors,
+} from './volume'
+
+const VOLUME_SCALE_ID = 'volume'
 
 export type CrosshairListener = (candle: Candle | null) => void
 
@@ -28,6 +39,8 @@ export type CrosshairListener = (candle: Candle | null) => void
 export class ChartController {
   private readonly chart: IChartApi
   private readonly candleSeries: ISeriesApi<'Candlestick'>
+  private readonly volumeSeries: ISeriesApi<'Histogram'>
+  private volumeColors: VolumeColors = { up: '', down: '' }
   private dataKey: string | null = null
   private candles: readonly Candle[] = []
   private timeOffset = 0
@@ -65,6 +78,16 @@ export class ChartController {
     this.candleSeries = this.chart.addSeries(CandlestickSeries, {
       priceLineStyle: LineStyle.Dotted,
     })
+    this.candleSeries.priceScale().applyOptions({ scaleMargins: CANDLE_SCALE_MARGINS })
+
+    // Volume sobreposto na faixa inferior do painel principal, em escala própria e oculta.
+    this.volumeSeries = this.chart.addSeries(HistogramSeries, {
+      priceScaleId: VOLUME_SCALE_ID,
+      priceFormat: { type: 'custom', formatter: formatVolume, minMove: 1e-8 },
+      lastValueVisible: false,
+      priceLineVisible: false,
+    })
+    this.volumeSeries.priceScale().applyOptions({ scaleMargins: VOLUME_SCALE_MARGINS })
 
     this.chart.subscribeCrosshairMove(this.handleCrosshair)
     this.applyTheme(theme)
@@ -96,6 +119,9 @@ export class ChartController {
       wickUpColor: theme.up,
       wickDownColor: theme.down,
     })
+    // As cores do volume são por barra: é preciso reenviar os dados.
+    this.volumeColors = volumeColors(theme)
+    this.volumeSeries.setData(this.candles.map((c) => this.toVolumeBar(c)))
   }
 
   /** `key` identifica a série (ex.: "BTCUSDT:1h"); trocar a chave reinicia a visão. */
@@ -108,7 +134,10 @@ export class ChartController {
       case 'none':
         return
       case 'update':
-        for (const c of plan.candles) this.candleSeries.update(this.toBar(c))
+        for (const c of plan.candles) {
+          this.candleSeries.update(this.toBar(c))
+          this.volumeSeries.update(this.toVolumeBar(c))
+        }
         this.updatePrecision()
         return
       case 'reset':
@@ -120,11 +149,13 @@ export class ChartController {
     }
 
     this.candleSeries.setData(candles.map((c) => this.toBar(c)))
+    this.volumeSeries.setData(candles.map((c) => this.toVolumeBar(c)))
     this.updatePrecision()
     if (this.needsViewReset && candles.length > 0) {
       this.needsViewReset = false
       this.chart.timeScale().resetTimeScale()
       this.chart.priceScale('right').applyOptions({ autoScale: true })
+      this.chart.priceScale(VOLUME_SCALE_ID).applyOptions({ autoScale: true })
     }
   }
 
@@ -163,6 +194,14 @@ export class ChartController {
       high: c.high,
       low: c.low,
       close: c.close,
+    }
+  }
+
+  private toVolumeBar(c: Candle): HistogramData<Time> {
+    return {
+      time: (c.time + this.timeOffset) as UTCTimestamp,
+      value: c.volume,
+      color: volumeColor(c, this.volumeColors),
     }
   }
 
