@@ -15,8 +15,10 @@ import {
 } from 'lightweight-charts'
 import { pricePrecision } from '../domain/candles'
 import { formatPrice, formatVolume } from '../domain/format'
+import type { IndicatorResult } from '../domain/indicators/registry'
 import { isIntraday } from '../domain/intervals'
 import type { Candle, IntervalId } from '../domain/types'
+import { IndicatorView } from './IndicatorView'
 import type { ChartTheme } from './theme'
 import { formatCrosshairTime, formatTickMark, localOffsetSeconds } from './time'
 import { planCandleUpdate } from './updatePlan'
@@ -30,7 +32,8 @@ import {
 
 const VOLUME_SCALE_ID = 'volume'
 
-export type CrosshairListener = (candle: Candle | null) => void
+/** Índice do candle sob o crosshair, ou null quando o mouse sai do gráfico. */
+export type CrosshairListener = (index: number | null) => void
 
 /**
  * Adaptador imperativo do Lightweight Charts. O React só chama métodos daqui;
@@ -48,8 +51,11 @@ export class ChartController {
   private precision = 2
   private needsViewReset = true
   private readonly crosshairListeners = new Set<CrosshairListener>()
+  private readonly indicatorViews = new Map<string, IndicatorView>()
+  private theme: ChartTheme
 
   constructor(container: HTMLElement, theme: ChartTheme) {
+    this.theme = theme
     this.chart = createChart(container, {
       autoSize: true,
       layout: {
@@ -94,6 +100,7 @@ export class ChartController {
   }
 
   applyTheme(theme: ChartTheme) {
+    this.theme = theme
     this.chart.applyOptions({
       layout: {
         background: { type: ColorType.Solid, color: theme.background },
@@ -122,35 +129,48 @@ export class ChartController {
     // As cores do volume são por barra: é preciso reenviar os dados.
     this.volumeColors = volumeColors(theme)
     this.volumeSeries.setData(this.candles.map((c) => this.toVolumeBar(c)))
+    for (const view of this.indicatorViews.values()) view.applyTheme(theme)
   }
 
-  /** `key` identifica a série (ex.: "BTCUSDT:1h"); trocar a chave reinicia a visão. */
-  setCandles(key: string, interval: IntervalId, candles: readonly Candle[]) {
+  /**
+   * Envia candles e indicadores ao gráfico. `key` identifica a série
+   * (ex.: "BTCUSDT:1h"); trocar a chave reinicia a visão.
+   */
+  setData(
+    key: string,
+    interval: IntervalId,
+    candles: readonly Candle[],
+    indicators: readonly IndicatorResult[] = [],
+  ) {
     const plan = planCandleUpdate(this.dataKey, this.candles, key, candles)
     this.dataKey = key
     this.candles = candles
 
     switch (plan.kind) {
       case 'none':
-        return
+        break
       case 'update':
         for (const c of plan.candles) {
           this.candleSeries.update(this.toBar(c))
           this.volumeSeries.update(this.toVolumeBar(c))
         }
         this.updatePrecision()
-        return
-      case 'reset':
-        this.configureInterval(interval)
-        this.needsViewReset = true
         break
+      case 'reset':
       case 'replace':
+        if (plan.kind === 'reset') {
+          this.configureInterval(interval)
+          this.needsViewReset = true
+        }
+        this.candleSeries.setData(candles.map((c) => this.toBar(c)))
+        this.volumeSeries.setData(candles.map((c) => this.toVolumeBar(c)))
+        this.updatePrecision()
         break
     }
 
-    this.candleSeries.setData(candles.map((c) => this.toBar(c)))
-    this.volumeSeries.setData(candles.map((c) => this.toVolumeBar(c)))
-    this.updatePrecision()
+    const fromIndex = plan.kind === 'update' ? candles.length - plan.candles.length : 0
+    this.syncIndicators(indicators, plan.kind === 'update' ? fromIndex : plan.kind)
+
     if (this.needsViewReset && candles.length > 0) {
       this.needsViewReset = false
       this.chart.timeScale().resetTimeScale()
@@ -159,7 +179,12 @@ export class ChartController {
     }
   }
 
-  onCrosshairCandle(listener: CrosshairListener): () => void {
+  /** Elemento do painel onde o indicador é desenhado (para posicionar sua legenda). */
+  getIndicatorPaneElement(id: string): HTMLElement | null {
+    return this.indicatorViews.get(id)?.getPaneElement() ?? null
+  }
+
+  onCrosshair(listener: CrosshairListener): () => void {
     this.crosshairListeners.add(listener)
     return () => this.crosshairListeners.delete(listener)
   }
@@ -167,7 +192,48 @@ export class ChartController {
   destroy() {
     this.chart.unsubscribeCrosshairMove(this.handleCrosshair)
     this.crosshairListeners.clear()
+    for (const view of this.indicatorViews.values()) view.destroy()
+    this.indicatorViews.clear()
     this.chart.remove()
+  }
+
+  /**
+   * Cria, atualiza e remove as séries de indicadores. `change` é o índice a
+   * partir do qual os candles mudaram (tempo real) ou o tipo de troca completa.
+   */
+  private syncIndicators(
+    results: readonly IndicatorResult[],
+    change: number | 'none' | 'reset' | 'replace',
+  ) {
+    const ids = new Set(results.map((r) => r.config.id))
+    for (const [id, view] of this.indicatorViews) {
+      if (!ids.has(id)) {
+        view.destroy()
+        this.indicatorViews.delete(id)
+      }
+    }
+
+    const timeAt = (i: number) => this.candles[i]!.time + this.timeOffset
+    const length = this.candles.length
+    for (const { config, outputs } of results) {
+      let view = this.indicatorViews.get(config.id)
+      if (!view) {
+        view = new IndicatorView(config, {
+          chart: this.chart,
+          theme: this.theme,
+          formatPrice: (v) => formatPrice(v, this.precision),
+        })
+        this.indicatorViews.set(config.id, view)
+        view.setData(timeAt, outputs, length)
+      } else if (view.getConfig() !== config) {
+        view.setConfig(config)
+        view.setData(timeAt, outputs, length)
+      } else if (typeof change === 'number') {
+        view.updateFrom(timeAt, outputs, length, change)
+      } else if (change !== 'none') {
+        view.setData(timeAt, outputs, length)
+      }
+    }
   }
 
   private configureInterval(interval: IntervalId) {
@@ -206,11 +272,12 @@ export class ChartController {
   }
 
   private readonly handleCrosshair = (param: MouseEventParams<Time>) => {
-    const index = param.logical
-    const candle =
-      param.time !== undefined && index !== undefined
-        ? (this.candles[Math.round(index)] ?? null)
-        : null
-    for (const l of this.crosshairListeners) l(candle)
+    const logical = param.logical
+    let index: number | null = null
+    if (param.time !== undefined && logical !== undefined) {
+      const i = Math.round(logical)
+      if (i >= 0 && i < this.candles.length) index = i
+    }
+    for (const l of this.crosshairListeners) l(index)
   }
 }

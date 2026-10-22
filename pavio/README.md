@@ -48,7 +48,7 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
 - [x] 0. Estrutura do projeto, ferramentas e licenças
 - [x] 1. Candles com troca de par e timeframe
 - [x] 2. Volume
-- [ ] 3. Indicadores: MME, MMS, RSI, MACD, Bandas de Bollinger
+- [x] 3. Indicadores: MME, MMS, RSI, MACD, Bandas de Bollinger
 - [ ] 4. Desenho: linha de tendência, linha horizontal, Fibonacci
 - [ ] 5. Watchlist em tempo real
 - [ ] 6. Tema claro/escuro
@@ -61,6 +61,12 @@ Caso contrário, rode `npx playwright install chromium` uma vez.
   exponencial. Após reconectar, o histórico é recarregado para cobrir lacunas.
 - **Volume:** histograma sobreposto nos 20% inferiores do gráfico, em escala
   própria, com a cor do candle (alta/baixa) translúcida.
+- **Indicadores:** MME, MMS e Bandas de Bollinger sobre os candles; IFR (RSI)
+  e MACD em painéis próprios. Cada instância tem período, fonte de preço e
+  cores editáveis e fica salva no `localStorage`. Os cálculos ficam em
+  `src/domain/indicators` como funções puras: médias exponenciais semeadas pela
+  média simples, IFR com suavização de Wilder e Bollinger com desvio padrão
+  populacional.
 - **Horário:** candles intradiários são exibidos no fuso local do navegador;
   candles diários seguem o dia UTC da Binance.
 - **Preferências:** par e timeframe ficam salvos no `localStorage`.

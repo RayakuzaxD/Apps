@@ -1,43 +1,94 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mergeCandle } from '../domain/candles'
+import {
+  computeIndicator,
+  defaultParams,
+  type IndicatorConfig,
+} from '../domain/indicators/registry'
 import type { Candle } from '../domain/types'
 import { ChartController } from './ChartController'
 import type { ChartTheme } from './theme'
 import { CANDLE_SCALE_MARGINS, VOLUME_SCALE_MARGINS } from './volume'
 
+interface FakePane {
+  index: number
+  setStretchFactor: ReturnType<typeof vi.fn>
+}
+
 interface FakeSeries {
   kind: string
   options: Record<string, unknown>
+  pane: FakePane
+  removed: boolean
   setData: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
   applyOptions: ReturnType<typeof vi.fn>
+  createPriceLine: ReturnType<typeof vi.fn>
+  removePriceLine: ReturnType<typeof vi.fn>
   scale: { applyOptions: ReturnType<typeof vi.fn> }
   priceScale: () => { applyOptions: ReturnType<typeof vi.fn> }
+  getPane: () => { paneIndex: () => number; getHTMLElement: () => HTMLElement | null }
 }
 
-const fake = vi.hoisted(() => ({ series: [] as FakeSeries[] }))
+const fake = vi.hoisted(() => ({ series: [] as FakeSeries[], panes: [] as FakePane[] }))
 
 vi.mock('lightweight-charts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('lightweight-charts')>()
-  const createSeries = (kind: string, options: Record<string, unknown>): FakeSeries => {
+
+  // Painéis vazios somem e os seguintes sobem, como na biblioteca.
+  const prunePanes = () => {
+    fake.panes = fake.panes.filter((p) => fake.series.some((s) => !s.removed && s.pane === p))
+    fake.panes.forEach((p, i) => (p.index = i))
+  }
+
+  const createSeries = (
+    kind: string,
+    options: Record<string, unknown>,
+    paneIndex: number,
+  ): FakeSeries => {
+    let pane = fake.panes[paneIndex]
+    if (!pane) {
+      pane = { index: fake.panes.length, setStretchFactor: vi.fn() }
+      fake.panes.push(pane)
+    }
     const scale = { applyOptions: vi.fn() }
-    return {
+    const series: FakeSeries = {
       kind,
       options,
+      pane,
+      removed: false,
       setData: vi.fn(),
       update: vi.fn(),
       applyOptions: vi.fn(),
+      createPriceLine: vi.fn((opts: unknown) => opts),
+      removePriceLine: vi.fn(),
       scale,
       priceScale: () => scale,
+      getPane: () => ({
+        paneIndex: () => series.pane.index,
+        getHTMLElement: () => document.body,
+      }),
     }
+    return series
   }
+
   return {
     ...actual,
     createChart: () => ({
-      addSeries: (definition: { type: string }, options: Record<string, unknown>) => {
-        const s = createSeries(definition.type, options)
+      addSeries: (
+        definition: { type: string },
+        options: Record<string, unknown>,
+        paneIndex = 0,
+      ) => {
+        const s = createSeries(definition.type, options, paneIndex)
         fake.series.push(s)
         return s
       },
+      removeSeries: (s: FakeSeries) => {
+        s.removed = true
+        prunePanes()
+      },
+      panes: () => fake.panes,
       applyOptions: vi.fn(),
       priceScale: () => ({ applyOptions: vi.fn() }),
       timeScale: () => ({ resetTimeScale: vi.fn() }),
@@ -77,6 +128,7 @@ const byKind = (kind: string) => {
 describe('ChartController: volume', () => {
   beforeEach(() => {
     fake.series = []
+    fake.panes = []
   })
 
   it('cria o histograma de volume em escala sobreposta na faixa inferior', () => {
@@ -95,7 +147,7 @@ describe('ChartController: volume', () => {
 
   it('envia volume com cor de alta/baixa junto com os candles (diário, sem deslocamento)', () => {
     const ctl = new ChartController(document.createElement('div'), theme)
-    ctl.setCandles('BTCUSDT:1d', '1d', [c(86_400, 10, 12, 100), c(172_800, 12, 11, 250)])
+    ctl.setData('BTCUSDT:1d', '1d', [c(86_400, 10, 12, 100), c(172_800, 12, 11, 250)])
 
     const volume = byKind('Histogram')
     expect(volume.setData).toHaveBeenLastCalledWith([
@@ -108,11 +160,11 @@ describe('ChartController: volume', () => {
     const ctl = new ChartController(document.createElement('div'), theme)
     const first = c(86_400, 10, 12, 100)
     const last = c(172_800, 12, 11, 250)
-    ctl.setCandles('BTCUSDT:1d', '1d', [first, last])
+    ctl.setData('BTCUSDT:1d', '1d', [first, last])
     const volume = byKind('Histogram')
     volume.setData.mockClear()
 
-    ctl.setCandles('BTCUSDT:1d', '1d', [first, c(172_800, 12, 13, 300)])
+    ctl.setData('BTCUSDT:1d', '1d', [first, c(172_800, 12, 13, 300)])
     expect(volume.setData).not.toHaveBeenCalled()
     expect(volume.update).toHaveBeenLastCalledWith({
       time: 172_800,
@@ -123,10 +175,114 @@ describe('ChartController: volume', () => {
 
   it('recolore o volume ao trocar o tema', () => {
     const ctl = new ChartController(document.createElement('div'), theme)
-    ctl.setCandles('BTCUSDT:1d', '1d', [c(86_400, 10, 12, 100)])
+    ctl.setData('BTCUSDT:1d', '1d', [c(86_400, 10, 12, 100)])
     ctl.applyTheme({ ...theme, up: '#0000ff' })
     expect(byKind('Histogram').setData).toHaveBeenLastCalledWith([
       { time: 86_400, value: 100, color: '#0000ff73' },
     ])
+  })
+})
+
+describe('ChartController: indicadores', () => {
+  beforeEach(() => {
+    fake.series = []
+    fake.panes = []
+  })
+
+  const candles = Array.from({ length: 40 }, (_, i) => c(86_400 * (i + 1), 10 + i, 11 + i, 5))
+  const cfg = (id: string, type: IndicatorConfig['type'], params = {}): IndicatorConfig => ({
+    id,
+    type,
+    params: { ...defaultParams(type), ...params },
+    visible: true,
+  })
+  const results = (configs: IndicatorConfig[], data = candles) =>
+    configs.map((config) => computeIndicator(config, data))
+  const seriesOf = (count: number) => fake.series.slice(-count)
+
+  it('overlays ficam no painel principal; IFR e MACD ganham painéis próprios', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    ctl.setData(
+      'X:1d',
+      '1d',
+      candles,
+      results([cfg('e', 'ema'), cfg('r', 'rsi'), cfg('m', 'macd')]),
+    )
+
+    const live = fake.series.filter((s) => !s.removed)
+    // candles + volume + MME + IFR + (histograma, MACD, sinal)
+    expect(live.map((s) => [s.kind, s.pane.index])).toEqual([
+      ['Candlestick', 0],
+      ['Histogram', 0],
+      ['Line', 0],
+      ['Line', 1],
+      ['Histogram', 2],
+      ['Line', 2],
+      ['Line', 2],
+    ])
+    expect(fake.panes[0]!.setStretchFactor).toHaveBeenCalledWith(3)
+    expect(fake.panes[1]!.setStretchFactor).toHaveBeenCalledWith(1)
+  })
+
+  it('MME recebe espaços em branco no início e valores alinhados aos candles', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    ctl.setData('X:1d', '1d', candles, results([cfg('e', 'ema', { period: 3, color: '#123456' })]))
+    const [ema] = seriesOf(1)
+    const points = ema!.setData.mock.calls[0]![0] as { time: number; value?: number }[]
+    expect(points).toHaveLength(40)
+    expect(points[0]).toEqual({ time: 86_400 })
+    expect(points[2]).toEqual({ time: 86_400 * 3, value: 12 })
+    expect(ema!.applyOptions).toHaveBeenCalledWith({ visible: true, color: '#123456' })
+  })
+
+  it('IFR tem escala fixa 0–100 e linhas de sobrecompra/sobrevenda', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    ctl.setData('X:1d', '1d', candles, results([cfg('r', 'rsi')]))
+    const [rsiSeries] = seriesOf(1)
+    const provider = rsiSeries!.options.autoscaleInfoProvider as () => unknown
+    expect(provider()).toEqual({ priceRange: { minValue: 0, maxValue: 100 } })
+    expect(
+      rsiSeries!.createPriceLine.mock.calls.map((call) => (call[0] as { price: number }).price),
+    ).toEqual([70, 30])
+  })
+
+  it('em tempo real atualiza só os pontos finais dos indicadores', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const config = cfg('e', 'ema', { period: 3 })
+    ctl.setData('X:1d', '1d', candles, results([config]))
+    const [ema] = seriesOf(1)
+    ema!.setData.mockClear()
+
+    const next = mergeCandle(candles, c(86_400 * 41, 50, 52, 5))
+    ctl.setData('X:1d', '1d', next, [computeIndicator(config, next)])
+    expect(ema!.setData).not.toHaveBeenCalled()
+    expect(ema!.update).toHaveBeenCalledTimes(1)
+    expect(ema!.update.mock.calls[0]![0]).toMatchObject({ time: 86_400 * 41 })
+  })
+
+  it('editar parâmetros reenvia os dados; remover apaga as séries e o painel', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const rsiCfg = cfg('r', 'rsi')
+    ctl.setData('X:1d', '1d', candles, results([rsiCfg]))
+    const [rsiSeries] = seriesOf(1)
+    rsiSeries!.setData.mockClear()
+
+    const edited = { ...rsiCfg, params: { ...rsiCfg.params, period: 5 } }
+    ctl.setData('X:1d', '1d', candles, results([edited]))
+    expect(rsiSeries!.setData).toHaveBeenCalledTimes(1)
+
+    ctl.setData('X:1d', '1d', candles, [])
+    expect(rsiSeries!.removed).toBe(true)
+    expect(fake.panes).toHaveLength(1)
+  })
+
+  it('ocultar aplica visible=false e remove as linhas de nível do IFR', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const rsiCfg = cfg('r', 'rsi')
+    ctl.setData('X:1d', '1d', candles, results([rsiCfg]))
+    const [rsiSeries] = seriesOf(1)
+    ctl.setData('X:1d', '1d', candles, results([{ ...rsiCfg, visible: false }]))
+    expect(rsiSeries!.applyOptions).toHaveBeenLastCalledWith({ visible: false, color: '#a855f7' })
+    expect(rsiSeries!.removePriceLine).toHaveBeenCalledTimes(2)
   })
 })
