@@ -3,6 +3,7 @@ import { formatPercent, formatPrice } from '../../domain/format'
 import {
   indicatorLabel,
   readIndicator,
+  type ComputeContext,
   type IndicatorResult,
 } from '../../domain/indicators/registry'
 import { getInterval, isIntraday } from '../../domain/intervals'
@@ -19,6 +20,8 @@ interface ReadingPanelProps {
   candles: readonly Candle[]
   results: readonly IndicatorResult[]
   status: KlinesStatus
+  /** Contexto dos indicadores (velas semanais/mensais, séries externas). */
+  data?: ComputeContext
   /** Agora, em segundos (injetável nos testes). */
   now?: number
 }
@@ -42,6 +45,7 @@ export function ReadingPanel({
   candles,
   results,
   status,
+  data,
   now,
 }: ReadingPanelProps) {
   const clock = useNow()
@@ -91,7 +95,7 @@ export function ReadingPanel({
 
         {visible.map((result) => {
           const label = indicatorLabel(result.config.type, result.config.params)
-          const reading = readIndicator(result, candles, precision)
+          const reading = readIndicator(result, candles, precision, candles.length - 1, data)
           return (
             <div
               key={result.config.id}

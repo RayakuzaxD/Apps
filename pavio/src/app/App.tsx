@@ -12,7 +12,13 @@ import { ThemeMenu } from '../components/toolbar/ThemeMenu'
 import { TimeframeSelect } from '../components/toolbar/TimeframeSelect'
 import toolbarStyles from '../components/toolbar/Toolbar.module.css'
 import { WatchlistPanel } from '../components/watchlist/WatchlistPanel'
-import { useIndicatorResults } from '../hooks/useIndicatorResults'
+import { useMemo } from 'react'
+import { getInterval } from '../domain/intervals'
+import type { ComputeContext } from '../domain/indicators/registry'
+import { useExternalSeries } from '../hooks/useExternalSeries'
+import { useHigherTimeframes } from '../hooks/useHigherTimeframes'
+import { collectRequirements, useIndicatorResults } from '../hooks/useIndicatorResults'
+import { useNow } from '../hooks/useNow'
 import { useKlines } from '../hooks/useKlines'
 import { useDrawingsStore } from '../store/drawingsStore'
 import { MAX_INDICATORS, useIndicatorsStore } from '../store/indicatorsStore'
@@ -27,7 +33,8 @@ export function App() {
   const setInterval = useSettingsStore((s) => s.setInterval)
   const theme = useSettingsStore((s) => s.theme)
   const setTheme = useSettingsStore((s) => s.setTheme)
-  const indicatorCount = useIndicatorsStore((s) => s.indicators.length)
+  const indicators = useIndicatorsStore((s) => s.indicators)
+  const indicatorCount = indicators.length
   const addIndicator = useIndicatorsStore((s) => s.add)
   const tool = useDrawingsStore((s) => s.tool)
   const selectedDrawing = useDrawingsStore((s) => s.selectedId)
@@ -40,7 +47,28 @@ export function App() {
   const setPanelOpen = usePanelStore((s) => s.setOpen)
   const setPanelTab = usePanelStore((s) => s.setTab)
   const klines = useKlines(symbol, interval)
-  const results = useIndicatorResults(klines.candles)
+  const requirements = useMemo(() => collectRequirements(indicators), [indicators])
+  const { weekly, monthly } = useHigherTimeframes(
+    symbol,
+    interval,
+    requirements.weekly,
+    requirements.monthly,
+  )
+  const external = useExternalSeries(requirements.external)
+  const now = useNow()
+  const data = useMemo<ComputeContext>(
+    () => ({
+      symbol,
+      interval,
+      intervalSeconds: getInterval(interval).seconds,
+      now,
+      weekly,
+      monthly,
+      external,
+    }),
+    [symbol, interval, now, weekly, monthly, external],
+  )
+  const results = useIndicatorResults(indicators, klines.candles, data)
 
   return (
     <div className={styles.shell}>
@@ -96,6 +124,7 @@ export function App() {
                 candles={klines.candles}
                 results={results}
                 status={klines.status}
+                data={data}
               />
             }
             watchlist={<WatchlistPanel />}

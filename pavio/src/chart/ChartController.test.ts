@@ -6,6 +6,7 @@ import {
   type IndicatorConfig,
 } from '../domain/indicators/registry'
 import type { Candle } from '../domain/types'
+import { fullContext } from '../../tests/fixtures/indicatorContext'
 import { ChartController, OLDER_THRESHOLD_BARS } from './ChartController'
 import type { ChartTheme } from './theme'
 import { CANDLE_SCALE_MARGINS, VOLUME_SCALE_MARGINS } from './volume'
@@ -25,6 +26,8 @@ interface FakeSeries {
   applyOptions: ReturnType<typeof vi.fn>
   createPriceLine: ReturnType<typeof vi.fn>
   removePriceLine: ReturnType<typeof vi.fn>
+  attachPrimitive: ReturnType<typeof vi.fn>
+  detachPrimitive: ReturnType<typeof vi.fn>
   scale: { applyOptions: ReturnType<typeof vi.fn> }
   priceScale: () => { applyOptions: ReturnType<typeof vi.fn> }
   getPane: () => { paneIndex: () => number; getHTMLElement: () => HTMLElement | null }
@@ -71,6 +74,8 @@ vi.mock('lightweight-charts', async (importOriginal) => {
       applyOptions: vi.fn(),
       createPriceLine: vi.fn((opts: unknown) => opts),
       removePriceLine: vi.fn(),
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
       scale,
       priceScale: () => scale,
       getPane: () => ({
@@ -460,5 +465,77 @@ describe('ChartController: escala log', () => {
 
     ctl.setLogScale(true)
     expect(rsiSeries.scale.applyOptions).toHaveBeenCalledWith({ mode: PriceScaleMode.Normal })
+  })
+})
+
+describe('ChartController: indicadores de ciclo e macro', () => {
+  beforeEach(() => {
+    fake.series = []
+    fake.panes = []
+  })
+
+  const DAY = 86_400
+  const full = fullContext(120)
+  const send = (ctl: ChartController, configs: IndicatorConfig[], candles = full.candles) =>
+    ctl.setData(
+      'BTCUSDT:1d',
+      '1d',
+      candles,
+      configs.map((cfg) => computeIndicator(cfg, candles, full.data)),
+    )
+  const cfgOf = (type: IndicatorConfig['type'], params = {}): IndicatorConfig => ({
+    id: type,
+    type,
+    params: { ...defaultParams(type), ...params },
+    visible: true,
+  })
+
+  it('saídas ocultas não viram série; a linha é colorida pela tendência', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    send(ctl, [cfgOf('nfci')])
+    const panes = fake.series.filter((x) => x.pane.index === 1)
+    expect(panes).toHaveLength(1)
+    const points = panes[0]!.setData.mock.calls.at(-1)![0] as { value?: number; color?: string }[]
+    const colors = new Set(points.filter((p) => p.value !== undefined).map((p) => p.color))
+    // Cores de alta/baixa do tema e o neutro (texto translúcido).
+    for (const color of colors) expect(['#00ff00', '#ff0000', '#3333338c']).toContain(color)
+  })
+
+  it('a Faixa de Bull prende o preenchimento na primeira linha', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    send(ctl, [cfgOf('bmsb')])
+    const lines = fake.series.filter((x) => x.kind === 'Line')
+    expect(lines).toHaveLength(2)
+    expect(lines[0]!.attachPrimitive).toHaveBeenCalledTimes(1)
+    expect(lines[1]!.attachPrimitive).not.toHaveBeenCalled()
+  })
+
+  it('GLI com offset desenha pontos à frente da última vela, no passo do intervalo', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    send(ctl, [cfgOf('gli', { offsetDays: 10 })])
+    const gli = fake.series.find((x) => x.pane.index === 1)!
+    const points = gli.setData.mock.calls.at(-1)![0] as { time: number }[]
+    expect(points).toHaveLength(full.candles.length + 10)
+    expect(points.at(-1)!.time).toBe(full.candles.at(-1)!.time + 10 * DAY)
+
+    // Tick na última vela: com pontos à frente, reenvia tudo em vez de atualizar.
+    gli.setData.mockClear()
+    gli.update.mockClear()
+    const ticked = [...full.candles.slice(0, -1), { ...full.candles.at(-1)!, close: 1 }]
+    send(ctl, [cfgOf('gli', { offsetDays: 10 })], ticked)
+    expect(gli.update).not.toHaveBeenCalled()
+  })
+
+  it('mesmas velas com saídas novas (dado externo que chegou depois) redesenham', () => {
+    const ctl = new ChartController(document.createElement('div'), theme)
+    const config = cfgOf('mvrv')
+    const empty = computeIndicator(config, full.candles, { ...full.data, external: {} })
+    ctl.setData('BTCUSDT:1d', '1d', full.candles, [empty])
+    const mvrv = fake.series.find((x) => x.pane.index === 1)!
+    mvrv.setData.mockClear()
+    ctl.setData('BTCUSDT:1d', '1d', full.candles, [
+      computeIndicator(config, full.candles, full.data),
+    ])
+    expect(mvrv.setData).toHaveBeenCalledTimes(1)
   })
 })

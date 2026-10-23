@@ -15,14 +15,21 @@ describe('IndicatorMenu', () => {
     expect(names('Ciclo & On-chain')).toEqual([
       'Bandas de Bollinger (BB)',
       'Índice de Força Relativa (IFR)',
+      'Faixa de Bull Market (Faixa Bull)',
+      'Média de 50 semanas (MMS)',
+      'Média de 200 semanas (MMS)',
+      'MVRV',
+      'Preço Realizado',
+    ])
+    expect(names('Macro & Liquidez')).toEqual([
+      'Índice de Liquidez Global (GLI)',
+      'Condições Financeiras (NFCI)',
     ])
     expect(names('Gerais')).toEqual([
       'Média Móvel Exponencial (MME)',
       'Média Móvel Simples (MMS)',
-      'MACD (MACD)',
+      'MACD',
     ])
-    // Pacote sem indicadores ainda não aparece.
-    expect(screen.queryByRole('group', { name: 'Macro & Liquidez' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('menuitem', { name: /Força Relativa/ }))
     expect(onAdd).toHaveBeenCalledWith('rsi')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()

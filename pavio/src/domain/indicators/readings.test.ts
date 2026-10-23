@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Candle } from '../types'
+import { fullContext } from '../../../tests/fixtures/indicatorContext'
 import type { Series } from './math'
 import {
   percentileRank,
@@ -32,13 +32,16 @@ describe('leituras', () => {
   })
 
   it('preço contra uma linha', () => {
-    expect(readPriceVsLine(110, 100, 'MMS 50', 2)).toEqual({
+    expect(readPriceVsLine(110, 100, 'da MMS 50', 2)).toEqual({
       value: '100,00',
       zone: 'acima',
       tone: 'above',
       detail: 'Preço 10,00% acima da MMS 50.',
     })
-    expect(readPriceVsLine(90, 100, 'MME 21', 2)).toMatchObject({ zone: 'abaixo', tone: 'below' })
+    expect(readPriceVsLine(90, 100, 'do Preço Realizado', 2)).toMatchObject({
+      zone: 'abaixo',
+      tone: 'below',
+    })
   })
 
   it('percentil e valor nulo', () => {
@@ -94,10 +97,8 @@ describe('leituras', () => {
 })
 
 describe('registro: pacotes, textos e leituras', () => {
-  const candles: Candle[] = Array.from({ length: 300 }, (_, i) => {
-    const close = 100 + 20 * Math.sin(i / 9) + i * 0.1
-    return { time: i * 86_400, open: close - 1, high: close + 2, low: close - 2, close, volume: 10 }
-  })
+  // Velas diárias + semanais, mensais e séries externas sintéticas: todos os indicadores calculam.
+  const { candles, data } = fullContext()
 
   it('todo indicador tem pacote existente e textos de "o que é" e "como ler"', () => {
     const packs = new Set(PACKS.map((p) => p.id))
@@ -112,8 +113,9 @@ describe('registro: pacotes, textos e leituras', () => {
   it('todo indicador tem leitura com dados suficientes e "sem dado" (null) sem eles', () => {
     for (const type of INDICATOR_TYPES) {
       const config = { id: type, type, params: defaultParams(type), visible: true }
-      const result = computeIndicator(config, candles)
-      expect(readIndicator(result, candles, 2), type).not.toBeNull()
+      const result = computeIndicator(config, candles, data)
+      expect(readIndicator(result, candles, 2, candles.length - 1, data), type).not.toBeNull()
+      // Poucas velas e nenhum dado extra: sem dado.
       const few = candles.slice(0, 2)
       expect(readIndicator(computeIndicator(config, few), few, 2), type).toBeNull()
     }
@@ -133,11 +135,17 @@ describe('registro: pacotes, textos e leituras', () => {
       const def = INDICATORS[type]
       texts.push(def.name, def.description, def.about.what, def.about.howToRead)
       const result = computeIndicator(
-        { id: type, type, params: defaultParams(type), visible: true },
+        {
+          id: type,
+          type,
+          params: { ...defaultParams(type), ...(type === 'gli' ? { offsetDays: 30 } : {}) },
+          visible: true,
+        },
         candles,
+        data,
       )
       for (let i = 0; i < candles.length; i++) {
-        const r = readIndicator(result, candles, 2, i)
+        const r = readIndicator(result, candles, 2, i, data)
         if (r) texts.push(r.value, r.zone, r.detail)
       }
     }

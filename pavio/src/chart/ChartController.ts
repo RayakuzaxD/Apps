@@ -276,8 +276,13 @@ export class ChartController {
       }
     }
 
-    const timeAt = (i: number) => this.candles[i]!.time + this.timeOffset
     const length = this.candles.length
+    // Além da última vela (projeções, ex.: GLI com offset), segue o passo do intervalo.
+    const timeAt = (i: number) =>
+      (i < length
+        ? this.candles[i]!.time
+        : this.candles[length - 1]!.time + (i - length + 1) * this.intervalSeconds) +
+      this.timeOffset
     for (const { config, outputs } of results) {
       let view = this.indicatorViews.get(config.id)
       if (!view) {
@@ -293,7 +298,8 @@ export class ChartController {
         view.setData(timeAt, outputs, length)
       } else if (typeof change === 'number') {
         view.updateFrom(timeAt, outputs, length, change)
-      } else if (change !== 'none') {
+      } else if (change !== 'none' || view.hasNewOutputs(outputs)) {
+        // Inclui o caso de velas iguais com saídas novas (ex.: série externa que chegou depois).
         view.setData(timeAt, outputs, length)
       }
     }

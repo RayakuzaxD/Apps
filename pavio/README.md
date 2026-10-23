@@ -16,7 +16,8 @@ recomendação de compra ou venda.
 - [Lightweight Charts™](https://github.com/tradingview/lightweight-charts) 5 (Apache-2.0)
 - Zustand para estado (persistido em `localStorage`)
 - Dados: API pública da Binance (REST para histórico, WebSocket para tempo real)
-  e da Bitstamp (BTC/USD antes de 2017)
+  e da Bitstamp (BTC/USD antes de 2017); séries macro do FRED e on-chain da
+  Coin Metrics, baixadas 1× por dia pelo robô de dados
 - Testes: Vitest + Testing Library (unidade/componentes) e Playwright (e2e)
 
 ## Rodando localmente
@@ -38,16 +39,50 @@ funciona em regiões onde `api.binance.com` é bloqueado. Para trocar, defina
 
 ## Scripts
 
-| Comando            | O que faz                                      |
-| ------------------ | ---------------------------------------------- |
-| `npm run dev`      | Servidor de desenvolvimento                    |
-| `npm run build`    | Typecheck + build de produção                  |
-| `npm run check`    | Typecheck, lint, formatação e testes unitários |
-| `npm run test`     | Testes unitários (Vitest)                      |
-| `npm run test:e2e` | Testes end-to-end (Playwright)                 |
+| Comando            | O que faz                                         |
+| ------------------ | ------------------------------------------------- |
+| `npm run dev`      | Servidor de desenvolvimento                       |
+| `npm run build`    | Typecheck + build de produção                     |
+| `npm run check`    | Typecheck, lint, formatação e testes unitários    |
+| `npm run test`     | Testes unitários (Vitest)                         |
+| `npm run test:e2e` | Testes end-to-end (Playwright)                    |
+| `npm run data`     | Baixa as séries macro/on-chain para `public/data` |
 
 Para usar um Chromium já instalado nos testes e2e, defina `PW_CHROMIUM_PATH`.
 Caso contrário, rode `npx playwright install chromium` uma vez.
+
+## Robô de dados
+
+Os indicadores macro e on-chain usam séries que o navegador não consegue baixar
+direto (o FRED não libera CORS). O script `scripts/fetch-data.ts` baixa tudo e
+grava `public/data/<id>.json`, publicado junto com o site; o app lê esses
+arquivos só quando um indicador precisa deles.
+
+| Série          | Fonte        | Uso                             |
+| -------------- | ------------ | ------------------------------- |
+| `WALCL`        | FRED         | GLI (balanço do FED)            |
+| `WTREGEN`      | FRED         | GLI (conta do Tesouro, TGA)     |
+| `RRPONTSYD`    | FRED         | GLI (recompra reversa, RRP)     |
+| `ECBASSETSW`   | FRED         | GLI (balanço do BCE)            |
+| `JPNASSETS`    | FRED         | GLI (balanço do Banco do Japão) |
+| `DEXUSEU`      | FRED         | GLI (câmbio US$/€)              |
+| `DEXJPUS`      | FRED         | GLI (câmbio ¥/US$)              |
+| `NFCI`         | FRED         | NFCI                            |
+| `BTC_MVRV`     | Coin Metrics | MVRV e Preço Realizado          |
+| `BTC_PRICE_CM` | Coin Metrics | Preço Realizado (preço ÷ MVRV)  |
+
+- **Quando roda:** no CI, todo dia às 09:17 UTC e a cada push no `main`, antes
+  do build. Os PRs não baixam dados (os e2e usam dados simulados). Localmente:
+  `npm run data`.
+- **Se uma fonte falhar:** reaproveita o arquivo já publicado no site (o de
+  ontem); sem ele, a série fica sem arquivo e o app mostra "sem dado". O build
+  nunca falha por causa de dados.
+- **Sem número inventado:** cada série tem uma defasagem máxima (ex.: 10 dias
+  para as semanais, 75 para o balanço mensal do Banco do Japão); passou disso,
+  o valor vira "sem dado" em vez de repetir um dado velho.
+- **Licenças:** séries do FRED (Federal Reserve Bank of St. Louis), citadas no
+  rodapé; dados da Coin Metrics Community sob CC BY-NC 4.0, com atribuição no
+  rodapé.
 
 ## Publicação
 
@@ -72,8 +107,8 @@ fonte.
 
 - [x] 1a. Base: 1S e 1M, escala log, BTC desde 2011, pacotes de indicadores
       com explicação, tabela de zonas, painel "Leitura do dia" e layout de celular
-- [ ] 1b. Dados diários (FRED, CoinMetrics), Faixa de Bull Market, médias de
-      50/200 semanas, MVRV, GLI e NFCI
+- [x] 1b. Dados diários (FRED, Coin Metrics), Faixa de Bull Market, médias de
+      50/200 semanas, MVRV, Preço Realizado, GLI e NFCI
 - [ ] 2. Restante do pacote Ciclo & On-chain
 - [ ] 3. Pacote Macro & Liquidez
 - [ ] 4. Desenhos: retângulo, texto e fases de Wyckoff
@@ -114,6 +149,20 @@ fonte.
   Um teste garante que nenhum texto recomenda comprar ou vender.
 - **Celular:** cabeçalho em duas linhas, sem rolagem lateral; o painel lateral
   começa fechado e flutua sobre o gráfico.
+- **Indicadores em semanas** (Faixa de Bull Market, médias de 50 e 200
+  semanas): calculados no semanal e mostrados em qualquer tempo gráfico, em
+  degraus semanais. Fora do 1S, o app baixa as semanas à parte (BTC desde 2011)
+  e a semana em formação acompanha o preço ao vivo. A leitura diz como
+  fecharam a última semana e o último mês.
+- **Ciclo & On-chain:** Faixa de Bull Market (MMS 20s + MME 21s com a área
+  pintada), médias de 50 e 200 semanas, MVRV (zonas: abaixo de 1 fundo, 1,4–1,5
+  acumulação, acima de 3,5 topo) e Preço Realizado (preço ÷ MVRV). MVRV e Preço
+  Realizado só existem para pares de BTC.
+- **Macro & Liquidez:** GLI = balanço do FED − TGA − RRP + BCE + Banco do Japão,
+  em trilhões de US$ (a China não entra), verde subindo e vermelho caindo em 28
+  dias; offset em dias desloca a linha para frente e projeta além da última
+  vela. NFCI colorido pela direção em 4 semanas: afrouxou 0,05 = verde, apertou
+  0,05 = vermelho, entre os dois = cinza.
 - **Indicadores:** MME, MMS e Bandas de Bollinger sobre os candles; IFR (RSI)
   e MACD em painéis próprios. Cada instância tem período, fonte de preço e
   cores editáveis e fica salva no `localStorage`. Os cálculos ficam em

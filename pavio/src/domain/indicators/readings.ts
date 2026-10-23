@@ -66,15 +66,18 @@ export function readOscillator(value: number, lower: number, upper: number): Rea
   }
 }
 
-/** Posição do preço em relação a uma linha (média móvel etc.). */
-export function readPriceVsLine(price: number, line: number, lineLabel: string, precision: number) {
+/**
+ * Posição do preço em relação a uma linha (média móvel etc.). `ofLine` já traz
+ * o artigo certo: "da MMS 50", "do Preço Realizado".
+ */
+export function readPriceVsLine(price: number, line: number, ofLine: string, precision: number) {
   const diff = (price / line - 1) * 100
   const above = diff >= 0
   return {
     value: fmt(line, precision),
     zone: above ? 'acima' : 'abaixo',
     tone: above ? 'above' : 'below',
-    detail: `Preço ${fmt(Math.abs(diff))}% ${above ? 'acima' : 'abaixo'} da ${lineLabel}.`,
+    detail: `Preço ${fmt(Math.abs(diff))}% ${above ? 'acima' : 'abaixo'} ${ofLine}.`,
   } satisfies Reading
 }
 

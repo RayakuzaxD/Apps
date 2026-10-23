@@ -1,4 +1,6 @@
 import type { Page, Route, WebSocketRoute } from '@playwright/test'
+import { SERIES } from '../../src/data/series'
+import { syntheticSeries } from '../fixtures/indicatorContext'
 import { makeRestKlines } from '../fixtures/klines'
 import { makeTicker24h } from '../fixtures/tickers'
 
@@ -30,10 +32,15 @@ export const TICKERS: Record<string, { last: number; open: number }> = {
 export const KLINE_COUNT = 300
 export const START_MS = Date.UTC(2026, 8, 1)
 
+/** Fim do fixture de 1h; semanal e mensal terminam aqui também (como na Binance real). */
+const HOURLY_END_MS = START_MS + (KLINE_COUNT - 1) * INTERVAL_MS['1h']!
+
 export function fixtureKlines(symbol: string, interval: string) {
+  const intervalMs = INTERVAL_MS[interval] ?? 3_600_000
+  const long = interval === '1w' || interval === '1M'
   return makeRestKlines(KLINE_COUNT, {
-    startMs: START_MS,
-    intervalMs: INTERVAL_MS[interval] ?? 3_600_000,
+    startMs: long ? HOURLY_END_MS - (KLINE_COUNT - 1) * intervalMs : START_MS,
+    intervalMs,
     startPrice: START_PRICE[symbol] ?? 1,
     seed: symbol.length * 7 + interval.length,
   })
@@ -61,7 +68,12 @@ function pageOf(rows: (string | number)[][], url: URL) {
   return upTo.slice(-limit)
 }
 
+/** Séries externas (robô de dados) servidas em `data/<id>.json`. */
+export type ExternalDataOption = 'all' | 'none' | Record<string, unknown>
+
 export interface MockOptions {
+  /** Arquivos `data/<id>.json`: `all` = séries sintéticas de 2025 a 2033; padrão `none` (404). */
+  externalData?: ExternalDataOption
   /** Total de candles disponíveis por série (padrão: `KLINE_COUNT`). */
   historyTotal?: number
   /** Candles diários de BTC/USD da Bitstamp (padrão: nenhum). */
@@ -86,7 +98,9 @@ function bitstampPage(rows: (string | number)[][], url: URL) {
 }
 
 export interface BinanceMock {
-  klineRequests: { symbol: string; interval: string; endTime?: number }[]
+  klineRequests: { symbol: string; interval: string; endTime?: number; limit?: number }[]
+  /** Ids pedidos em `data/<id>.json`. */
+  dataRequests: string[]
   /** Valores de `end` (segundos) dos pedidos à Bitstamp. */
   bitstampRequests: number[]
   wsMessages: { method: string; params: string[] }[]
@@ -111,6 +125,7 @@ export async function mockBinance(page: Page, options: MockOptions = {}): Promis
   const wsMessages: BinanceMock['wsMessages'] = []
   const tickerRequests: string[] = []
   const bitstampRequests: number[] = []
+  const dataRequests: string[] = []
   let socket: WebSocketRoute | null = null
 
   await page.route('**/api/v3/klines?**', async (route) => {
@@ -118,9 +133,14 @@ export async function mockBinance(page: Page, options: MockOptions = {}): Promis
     const symbol = url.searchParams.get('symbol') ?? ''
     const interval = url.searchParams.get('interval') ?? ''
     const endTime = url.searchParams.get('endTime')
-    klineRequests.push(
-      endTime === null ? { symbol, interval } : { symbol, interval, endTime: Number(endTime) },
-    )
+    const limit = Number(url.searchParams.get('limit'))
+    klineRequests.push({
+      symbol,
+      interval,
+      ...(endTime === null ? {} : { endTime: Number(endTime) }),
+      // Só registra limites fora do padrão (ex.: os 24 meses do fechamento mensal).
+      ...(limit && limit !== 1000 ? { limit } : {}),
+    })
     if (!START_PRICE[symbol]) {
       await failLikeBinance(route)
       return
@@ -129,6 +149,25 @@ export async function mockBinance(page: Page, options: MockOptions = {}): Promis
       ? deepKlines(symbol, interval, options.historyTotal)
       : fixtureKlines(symbol, interval)
     await route.fulfill({ json: pageOf(rows, url) })
+  })
+
+  await page.route('**/data/*.json', async (route) => {
+    const id = new URL(route.request().url()).pathname
+      .split('/')
+      .pop()!
+      .replace(/\.json$/, '')
+    dataRequests.push(id)
+    const option = options.externalData ?? 'none'
+    const body =
+      option === 'all'
+        ? SERIES.some((s) => s.id === id)
+          ? syntheticSeries(id, Date.UTC(2025, 0, 1) / 1000, Date.UTC(2033, 0, 1) / 1000)
+          : undefined
+        : option === 'none'
+          ? undefined
+          : option[id]
+    if (body === undefined) await route.fulfill({ status: 404, body: 'not found' })
+    else await route.fulfill({ json: body })
   })
 
   await page.route('**/api/v2/ohlc/btcusd/**', async (route) => {
@@ -177,6 +216,7 @@ export async function mockBinance(page: Page, options: MockOptions = {}): Promis
   return {
     klineRequests,
     bitstampRequests,
+    dataRequests,
     wsMessages,
     tickerRequests,
     ws: () => {
