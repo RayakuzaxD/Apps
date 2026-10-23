@@ -31,3 +31,6 @@ blob-report
 
 # Env
 .env
+
+# Dados gerados pelo robô (npm run data); publicados só no site
+public/data

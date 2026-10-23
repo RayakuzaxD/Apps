@@ -14,7 +14,12 @@ export function Footer() {
         </a>{' '}
         · Copyright (c) 2025 TradingView, Inc.
       </span>
-      <span>Dados de mercado: Binance · BTC antes de 2017: Bitstamp</span>
+      <span>
+        Dados: Binance · BTC antes de 2017: Bitstamp · Macro: FRED · On-chain:{' '}
+        <a href="https://coinmetrics.io/" target="_blank" rel="noopener noreferrer">
+          Coin Metrics
+        </a>
+      </span>
     </footer>
   )
 }

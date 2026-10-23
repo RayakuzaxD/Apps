@@ -4,7 +4,10 @@
   height: 100%;
 }
 
+/* Acima do gráfico e do painel lateral: os menus do cabeçalho descem sobre eles. */
 .header {
+  position: relative;
+  z-index: 40;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -72,6 +75,8 @@
 
 .chartArea {
   position: relative;
+  /* Empilhamento próprio: o divisor de painéis do gráfico (z-index 50) não passa por cima do cabeçalho. */
+  isolation: isolate;
   min-width: 0;
   min-height: 0;
 }

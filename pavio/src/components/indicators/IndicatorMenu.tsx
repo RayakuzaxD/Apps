@@ -74,7 +74,10 @@ export function IndicatorMenu({ count, max, onAdd }: IndicatorMenuProps) {
                       }}
                     >
                       <span className={styles.menuTitle}>
-                        {def.name} <span className={styles.menuShort}>({def.short})</span>
+                        {def.name}
+                        {!def.name.includes(def.short) && (
+                          <span className={styles.menuShort}> ({def.short})</span>
+                        )}
                       </span>
                       <span className={styles.menuDescription}>{def.description}</span>
                     </button>

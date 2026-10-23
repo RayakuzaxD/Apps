@@ -6,6 +6,9 @@ on:
   pull_request:
     paths: ['pavio/**', '.github/workflows/pavio-ci.yml']
   workflow_dispatch:
+  # Dados macro e on-chain do dia (FRED, Coin Metrics): atualiza e republica o site.
+  schedule:
+    - cron: '17 9 * * *'
 
 defaults:
   run:
@@ -23,6 +26,10 @@ jobs:
           cache-dependency-path: pavio/package-lock.json
       - run: npm ci
       - run: npm run check
+      # Só no main: os PRs não dependem de fontes externas (os e2e usam dados simulados).
+      - name: Baixar dados macro e on-chain
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: npm run data
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e

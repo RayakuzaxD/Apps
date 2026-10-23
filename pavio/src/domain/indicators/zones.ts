@@ -13,6 +13,24 @@ export const ZONES = {
     /** Largura entre as X% maiores do período = bandas largas. */
     widePercentile: 80,
   },
+  mvrv: {
+    /** Abaixo disso: zona de fundo. */
+    bottom: 1,
+    /** Faixa de acumulação. */
+    accumulationLow: 1.4,
+    accumulationHigh: 1.5,
+    /** Acima disso: zona de topo. */
+    top: 3.5,
+  },
+  gli: {
+    /** Janela para dizer se a liquidez está subindo ou caindo. */
+    lookbackDays: 28,
+  },
+  nfci: {
+    /** Direção do NFCI em N semanas: afrouxou ou apertou pelo menos o limiar. */
+    lookbackWeeks: 4,
+    threshold: 0.05,
+  },
 } as const
 
 export type ZonesTable = typeof ZONES

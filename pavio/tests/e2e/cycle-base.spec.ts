@@ -1,6 +1,6 @@
 import { devices, expect, test, type Page } from '@playwright/test'
 import { makeRestKlines } from '../fixtures/klines'
-import { START_MS, mockBinance } from './mockBinance'
+import { fixtureKlines, mockBinance } from './mockBinance'
 
 const DAY_MS = 86_400_000
 const FORBIDDEN = /\b(compre|comprar|compra|venda|vender|vende)\b/i
@@ -34,8 +34,9 @@ test.describe('Etapa 1a: base de ciclo', () => {
   })
 
   test('BTC semanal completa o histórico com a Bitstamp antes da Binance', async ({ page }) => {
+    const firstWeekMs = Number(fixtureKlines('BTCUSDT', '1w')[0]![0])
     const bitstampDaily = makeRestKlines(120, {
-      startMs: START_MS - 120 * DAY_MS,
+      startMs: firstWeekMs - 120 * DAY_MS,
       intervalMs: DAY_MS,
       startPrice: 7,
     })
@@ -45,7 +46,7 @@ test.describe('Etapa 1a: base de ciclo', () => {
     await expect(page.getByTestId('chart-legend')).toContainText('1S')
 
     // Pede à Bitstamp tudo antes do primeiro candle semanal da Binance, de uma vez.
-    await expect.poll(() => binance.bitstampRequests).toEqual([START_MS / 1000 - 1])
+    await expect.poll(() => binance.bitstampRequests).toEqual([firstWeekMs / 1000 - 1])
     // ETH não tem histórico extra.
     await page.getByRole('button', { name: /BTC\/USDT/ }).click()
     await page.getByRole('option', { name: /ETH\/USDT/ }).click()

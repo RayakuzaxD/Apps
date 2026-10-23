@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { fullContext } from '../../../tests/fixtures/indicatorContext'
 import type { Candle } from '../types'
 import {
   INDICATORS,
@@ -16,22 +17,53 @@ const candles: Candle[] = Array.from({ length: 80 }, (_, i) => {
 })
 
 describe('registro de indicadores', () => {
-  it('tem os 5 indicadores do MVP com parâmetros padrão válidos', () => {
-    expect(INDICATOR_TYPES).toEqual(['ema', 'sma', 'bb', 'rsi', 'macd'])
+  it('tem os indicadores do MVP, de ciclo e de macro, com parâmetros padrão válidos', () => {
+    expect(INDICATOR_TYPES).toEqual([
+      'ema',
+      'sma',
+      'bb',
+      'rsi',
+      'macd',
+      'bmsb',
+      'sma50w',
+      'sma200w',
+      'mvrv',
+      'realized',
+      'gli',
+      'nfci',
+    ])
     for (const type of INDICATOR_TYPES) {
       expect(validateParams(type, defaultParams(type)), type).toEqual({})
     }
   })
 
   it('cada indicador calcula todas as saídas declaradas, alinhadas aos candles', () => {
+    const full = fullContext()
     for (const type of INDICATOR_TYPES) {
+      const { outputs } = computeIndicator(
+        { id: 'x', type, params: defaultParams(type), visible: true },
+        full.candles,
+        full.data,
+      )
+      for (const output of INDICATORS[type].outputs) {
+        expect(outputs[output.key], `${type}.${output.key}`).toHaveLength(full.candles.length)
+        expect(outputs[output.key]!.at(-1), `${type}.${output.key}`).not.toBeNull()
+      }
+    }
+  })
+
+  it('sem velas semanais nem séries externas, os indicadores que dependem delas ficam sem dado', () => {
+    for (const type of INDICATOR_TYPES) {
+      if (!INDICATORS[type].requires) continue
       const { outputs } = computeIndicator(
         { id: 'x', type, params: defaultParams(type), visible: true },
         candles,
       )
-      for (const output of INDICATORS[type].outputs) {
-        expect(outputs[output.key], `${type}.${output.key}`).toHaveLength(candles.length)
-        expect(outputs[output.key]!.at(-1), `${type}.${output.key}`).not.toBeNull()
+      for (const values of Object.values(outputs)) {
+        expect(
+          values.every((v) => v === null),
+          type,
+        ).toBe(true)
       }
     }
   })

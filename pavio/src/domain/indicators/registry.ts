@@ -1,5 +1,5 @@
 import type { Candle } from '../types'
-import { bollinger, ema, macd, rsi, sma, type Series } from './math'
+import { bollinger, ema, macd, rsi, sma } from './math'
 import {
   readBollinger,
   readMacd,
@@ -9,39 +9,23 @@ import {
   type Reading,
 } from './readings'
 import { PRICE_SOURCES, isPriceSource, sourceValues, type PriceSource } from './source'
+import { CYCLE_INDICATORS } from './cycle'
+import { MACRO_INDICATORS } from './macro'
 
-export type IndicatorType = 'ema' | 'sma' | 'bb' | 'rsi' | 'macd'
+import type {
+  ComputeContext,
+  IndicatorConfig,
+  IndicatorPack,
+  IndicatorDef,
+  IndicatorParams,
+  IndicatorResult,
+  IndicatorType,
+  ParamDef,
+  ParamValue,
+  ReadingContext,
+} from './types'
 
-/** Valores de parâmetros: números, fonte de preço ou cor (#rrggbb). */
-export type ParamValue = number | string
-export type IndicatorParams = Record<string, ParamValue>
-
-export type ParamDef =
-  | { key: string; label: string; kind: 'int'; min: number; max: number; default: number }
-  | {
-      key: string
-      label: string
-      kind: 'float'
-      min: number
-      max: number
-      step: number
-      default: number
-    }
-  | { key: string; label: string; kind: 'source'; default: PriceSource }
-  | { key: string; label: string; kind: 'color'; default: string }
-
-export type OutputStyle = 'line' | 'histogram'
-
-export interface OutputDef {
-  key: string
-  label: string
-  style: OutputStyle
-  /** Parâmetro de cor que pinta esta saída (histogramas usam as cores de alta/baixa). */
-  colorParam?: string
-}
-
-/** Pacotes temáticos em que os indicadores aparecem no menu. */
-export type IndicatorPack = 'cycle' | 'macro' | 'general'
+export type * from './types'
 
 export const PACKS: readonly { id: IndicatorPack; name: string; description: string }[] = [
   {
@@ -57,37 +41,6 @@ export const PACKS: readonly { id: IndicatorPack; name: string; description: str
   { id: 'general', name: 'Gerais', description: 'Médias e osciladores clássicos.' },
 ]
 
-/** Dados para a leitura do indicador num candle (normalmente o atual). */
-export interface ReadingContext {
-  candles: readonly Candle[]
-  outputs: Record<string, Series>
-  params: IndicatorParams
-  index: number
-  /** Casas decimais de preço do par. */
-  precision: number
-}
-
-export interface IndicatorDef {
-  type: IndicatorType
-  name: string
-  short: string
-  description: string
-  pack: IndicatorPack
-  /** Texto curto exibido ao tocar no nome: o que é e como costuma ser lido. */
-  about: { what: string; howToRead: string }
-  /** Leitura do candle (valor, zona e contexto) ou null quando falta dado. */
-  read: (ctx: ReadingContext) => Reading | null
-  /** `overlay` desenha sobre os candles; `pane` cria um painel próprio abaixo. */
-  placement: 'overlay' | 'pane'
-  params: ParamDef[]
-  outputs: OutputDef[]
-  /** Linhas de referência horizontais (ex.: 70/30 no IFR). */
-  levels?: { value: number; label: string }[]
-  /** Escala fixa do painel. */
-  range?: { min: number; max: number }
-  compute: (candles: readonly Candle[], params: IndicatorParams) => Record<string, Series>
-}
-
 const num = (params: IndicatorParams, key: string) => params[key] as number
 const src = (params: IndicatorParams) => params.source as PriceSource
 
@@ -95,7 +48,7 @@ function readMovingAverage(ctx: ReadingContext, short: string): Reading | null {
   const line = valueAt(ctx.outputs.value, ctx.index)
   const close = ctx.candles[ctx.index]?.close
   if (line === null || close === undefined || line === 0) return null
-  return readPriceVsLine(close, line, `${short} ${num(ctx.params, 'period')}`, ctx.precision)
+  return readPriceVsLine(close, line, `da ${short} ${num(ctx.params, 'period')}`, ctx.precision)
 }
 
 export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
@@ -215,6 +168,7 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
     ],
     outputs: [{ key: 'value', label: 'IFR', style: 'line', colorParam: 'color' }],
     range: { min: 0, max: 100 },
+    levels: (p) => [num(p, 'upperLevel'), num(p, 'lowerLevel')],
     compute: (candles, p) => ({ value: rsi(sourceValues(candles, src(p)), num(p, 'period')) }),
   },
   macd: {
@@ -257,6 +211,8 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
       return { histogram: result.histogram, macd: result.macd, signal: result.signal }
     },
   },
+  ...CYCLE_INDICATORS,
+  ...MACRO_INDICATORS,
 }
 
 export const INDICATOR_TYPES = Object.keys(INDICATORS) as IndicatorType[]
@@ -329,6 +285,7 @@ export function sanitizeParams(type: IndicatorType, raw: unknown): IndicatorPara
 /** Rótulo curto da instância, ex.: "MME 21", "BB 20 2", "MACD 12 26 9". */
 export function indicatorLabel(type: IndicatorType, params: IndicatorParams): string {
   const def = INDICATORS[type]
+  if (def.label) return def.label(params)
   const numeric = def.params
     .filter((p) => (p.kind === 'int' || p.kind === 'float') && !p.key.endsWith('Level'))
     .map((p) => String(params[p.key]).replace('.', ','))
@@ -337,16 +294,25 @@ export function indicatorLabel(type: IndicatorType, params: IndicatorParams): st
   return [def.short, ...numeric, source ? source.label : null].filter(Boolean).join(' ')
 }
 
-export interface IndicatorConfig {
-  id: string
-  type: IndicatorType
-  params: IndicatorParams
-  visible: boolean
-}
-
-export interface IndicatorResult {
-  config: IndicatorConfig
-  outputs: Record<string, Series>
+/**
+ * Contexto mínimo (sem velas semanais/mensais nem séries externas): os
+ * indicadores que dependem deles devolvem "sem dado".
+ */
+export function basicComputeContext(
+  candles: readonly Candle[],
+  overrides: Partial<ComputeContext> = {},
+): ComputeContext {
+  const last = candles[candles.length - 1]
+  return {
+    symbol: '',
+    interval: '1d',
+    intervalSeconds: 86_400,
+    now: last ? last.time + 1 : 0,
+    weekly: null,
+    monthly: null,
+    external: {},
+    ...overrides,
+  }
 }
 
 /** Leitura de um indicador calculado no candle `index` (padrão: o último). */
@@ -355,15 +321,24 @@ export function readIndicator(
   candles: readonly Candle[],
   precision: number,
   index = candles.length - 1,
+  data: ComputeContext = basicComputeContext(candles),
 ): Reading | null {
   if (index < 0 || index >= candles.length) return null
   const { config, outputs } = result
-  return INDICATORS[config.type].read({ candles, outputs, params: config.params, index, precision })
+  return INDICATORS[config.type].read({
+    candles,
+    outputs,
+    params: config.params,
+    index,
+    precision,
+    data,
+  })
 }
 
 export function computeIndicator(
   config: IndicatorConfig,
   candles: readonly Candle[],
+  data: ComputeContext = basicComputeContext(candles),
 ): IndicatorResult {
-  return { config, outputs: INDICATORS[config.type].compute(candles, config.params) }
+  return { config, outputs: INDICATORS[config.type].compute(candles, config.params, data) }
 }

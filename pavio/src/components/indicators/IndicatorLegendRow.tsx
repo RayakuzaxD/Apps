@@ -26,7 +26,8 @@ export function IndicatorLegendRow({
   const { config, outputs } = result
   const def = INDICATORS[config.type]
   const label = indicatorLabel(config.type, config.params)
-  const digits = def.range ? 2 : precision
+  const digits = def.digits ?? (def.range ? 2 : precision)
+  const at = (key: string) => (index === null ? null : (outputs[key]?.[index] ?? null))
 
   return (
     <div
@@ -38,9 +39,16 @@ export function IndicatorLegendRow({
       <IndicatorInfo type={config.type} label={label} />
       <span className={styles.values}>
         {def.outputs.map((output) => {
-          const value = index === null ? null : (outputs[output.key]?.[index] ?? null)
-          const color =
-            output.colorParam !== undefined
+          if (output.style === 'hidden') return null
+          const value = at(output.key)
+          const trend = output.trendKey ? at(output.trendKey) : null
+          const color = output.trendKey
+            ? trend === 1
+              ? 'var(--up)'
+              : trend === -1
+                ? 'var(--down)'
+                : 'var(--text-muted)'
+            : output.colorParam !== undefined
               ? String(config.params[output.colorParam])
               : value !== null && value < 0
                 ? 'var(--down)'

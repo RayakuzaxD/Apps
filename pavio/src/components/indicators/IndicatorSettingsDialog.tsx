@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import {
   INDICATORS,
   defaultParams,
@@ -72,88 +73,97 @@ export function IndicatorSettingsDialog({
   }
 
   return (
-    <div
-      className={styles.backdrop}
-      onPointerDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <div className={styles.dialogHeader}>
-          <h2 className={styles.dialogTitle} id={titleId}>
-            {def.name}
-          </h2>
-          <button type="button" className={styles.iconButton} aria-label="Fechar" onClick={onClose}>
-            <X size={14} />
-          </button>
-        </div>
-        <form ref={formRef} onSubmit={submit} noValidate>
-          <div className={styles.form}>
-            {def.params.map((param) => {
-              const id = `${titleId}-${param.key}`
-              const error = errors[param.key]
-              const value = draft[param.key] ?? ''
-              const set = (v: string) => setDraft((d) => ({ ...d, [param.key]: v }))
-              return (
-                <div className={styles.field} key={param.key}>
-                  <label htmlFor={id}>{param.label}</label>
-                  {param.kind === 'source' ? (
-                    <select id={id} value={value} onChange={(e) => set(e.target.value)}>
-                      {PRICE_SOURCES.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : param.kind === 'color' ? (
-                    <input
-                      id={id}
-                      type="color"
-                      value={value}
-                      onChange={(e) => set(e.target.value)}
-                    />
-                  ) : (
-                    <input
-                      id={id}
-                      type="number"
-                      inputMode={param.kind === 'int' ? 'numeric' : 'decimal'}
-                      min={param.min}
-                      max={param.max}
-                      step={param.kind === 'int' ? 1 : param.step}
-                      value={value}
-                      aria-invalid={error ? true : undefined}
-                      aria-describedby={error ? `${id}-error` : undefined}
-                      onChange={(e) => set(e.target.value)}
-                    />
-                  )}
-                  {error && (
-                    <p className={styles.error} id={`${id}-error`} role="alert">
-                      {error}
-                    </p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          <div className={styles.dialogFooter}>
+    // No body: fica acima do cabeçalho e de tudo no gráfico (que tem empilhamento próprio).
+    createPortal(
+      <div
+        className={styles.backdrop}
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) onClose()
+        }}
+      >
+        <div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+          <div className={styles.dialogHeader}>
+            <h2 className={styles.dialogTitle} id={titleId}>
+              {def.name}
+            </h2>
             <button
               type="button"
-              className={styles.ghost}
-              onClick={() => setDraft(toDraft(defaultParams(config.type)))}
+              className={styles.iconButton}
+              aria-label="Fechar"
+              onClick={onClose}
             >
-              Restaurar padrão
+              <X size={14} />
             </button>
-            <div className={styles.footerRight}>
-              <button type="button" className={styles.button} onClick={onClose}>
-                Cancelar
-              </button>
-              <button type="submit" className={styles.primary} disabled={!valid}>
-                Aplicar
-              </button>
-            </div>
           </div>
-        </form>
-      </div>
-    </div>
+          <form ref={formRef} onSubmit={submit} noValidate>
+            <div className={styles.form}>
+              {def.params.map((param) => {
+                const id = `${titleId}-${param.key}`
+                const error = errors[param.key]
+                const value = draft[param.key] ?? ''
+                const set = (v: string) => setDraft((d) => ({ ...d, [param.key]: v }))
+                return (
+                  <div className={styles.field} key={param.key}>
+                    <label htmlFor={id}>{param.label}</label>
+                    {param.kind === 'source' ? (
+                      <select id={id} value={value} onChange={(e) => set(e.target.value)}>
+                        {PRICE_SOURCES.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : param.kind === 'color' ? (
+                      <input
+                        id={id}
+                        type="color"
+                        value={value}
+                        onChange={(e) => set(e.target.value)}
+                      />
+                    ) : (
+                      <input
+                        id={id}
+                        type="number"
+                        inputMode={param.kind === 'int' ? 'numeric' : 'decimal'}
+                        min={param.min}
+                        max={param.max}
+                        step={param.kind === 'int' ? 1 : param.step}
+                        value={value}
+                        aria-invalid={error ? true : undefined}
+                        aria-describedby={error ? `${id}-error` : undefined}
+                        onChange={(e) => set(e.target.value)}
+                      />
+                    )}
+                    {error && (
+                      <p className={styles.error} id={`${id}-error`} role="alert">
+                        {error}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className={styles.dialogFooter}>
+              <button
+                type="button"
+                className={styles.ghost}
+                onClick={() => setDraft(toDraft(defaultParams(config.type)))}
+              >
+                Restaurar padrão
+              </button>
+              <div className={styles.footerRight}>
+                <button type="button" className={styles.button} onClick={onClose}>
+                  Cancelar
+                </button>
+                <button type="submit" className={styles.primary} disabled={!valid}>
+                  Aplicar
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>,
+      document.body,
+    )
   )
 }
